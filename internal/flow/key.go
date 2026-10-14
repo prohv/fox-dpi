@@ -35,34 +35,26 @@ func NewFlowKey(srcIP netip.Addr, srcPort uint16, dstIP netip.Addr, dstPort uint
 	}
 }
 
-// Hash returns a fast, zero-allocation 32-bit hash for shard distribution.
+// Hash returns a fast, zero-allocation 32-bit hash using 64-bit word mixing.
 func (k FlowKey) Hash() uint32 {
-	const offset32 = 2166136261
-	const prime32 = 16777619
-
-	h := uint32(offset32)
-
 	lowBytes := k.LowIP.As16()
-	for i := 0; i < 16; i++ {
-		h ^= uint32(lowBytes[i])
-		h *= prime32
-	}
-
 	highBytes := k.HighIP.As16()
-	for i := 0; i < 16; i++ {
-		h ^= uint32(highBytes[i])
-		h *= prime32
-	}
 
-	var ports [5]byte
-	binary.BigEndian.PutUint16(ports[0:2], k.LowPort)
-	binary.BigEndian.PutUint16(ports[2:4], k.HighPort)
-	ports[4] = k.Proto
+	low0 := binary.LittleEndian.Uint64(lowBytes[0:8])
+	low1 := binary.LittleEndian.Uint64(lowBytes[8:16])
+	high0 := binary.LittleEndian.Uint64(highBytes[0:8])
+	high1 := binary.LittleEndian.Uint64(highBytes[8:16])
+	ports := uint64(k.LowPort)<<32 | uint64(k.HighPort)<<16 | uint64(k.Proto)
 
-	for i := 0; i < 5; i++ {
-		h ^= uint32(ports[i])
-		h *= prime32
-	}
+	// Word mixing with 64-bit primes and avalanche shifts
+	h := low0 ^ (low1 * 0x9e3779b97f4a7c15)
+	h ^= high0 * 0xc6a4a7935bd1e995
+	h ^= high1 * 0x85ebca6b
+	h ^= ports
 
-	return h
+	h ^= h >> 33
+	h *= 0xff51afd7ed558ccd
+	h ^= h >> 33
+
+	return uint32(h ^ (h >> 32))
 }
