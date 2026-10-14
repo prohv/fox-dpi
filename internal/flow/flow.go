@@ -3,6 +3,9 @@ package flow
 import (
 	"net/netip"
 	"time"
+
+	"fox-dpi/internal/protocol"
+	"fox-dpi/internal/reassembly"
 )
 
 // Direction indicates the transmission direction relative to the connection initiator.
@@ -28,10 +31,15 @@ type Flow struct {
 	LastSeen  time.Time
 	CloseTime time.Time
 
-	Closing       bool
-	SynSeen       bool
-	SynAckSeen    bool
-	HandshakeRTT  time.Duration
+	Closing      bool
+	SynSeen      bool
+	SynAckSeen   bool
+	HandshakeRTT time.Duration
+
+	L7Metadata   protocol.Metadata
+	L7Identified bool
+	L7Bypass     bool
+	Reassembler  *reassembly.StreamReassembler
 }
 
 // NewFlow initializes a new connection record with the initiator set from the first packet.
@@ -96,3 +104,24 @@ func (f *Flow) IsExpired(now time.Time, tcpIdle, udpIdle, closeGrace time.Durati
 	}
 	return now.Sub(f.LastSeen) >= udpIdle
 }
+
+// SetL7Metadata stores application layer identifiers.
+// For encrypted TLS, it sets L7Bypass to true and frees the reassembly buffer.
+// For HTTP/1.1, L7Bypass remains false to allow continuous inspection of keep-alive requests.
+func (f *Flow) SetL7Metadata(meta protocol.Metadata) {
+	f.L7Metadata = meta
+	f.L7Identified = true
+
+	if meta.Protocol == "TLS" {
+		f.L7Bypass = true
+		if f.Reassembler != nil {
+			f.Reassembler.Reset()
+		}
+	} else if meta.Protocol == "HTTP" {
+		if f.Reassembler != nil {
+			f.Reassembler.Reset()
+			f.Reassembler = reassembly.NewStreamReassembler(0)
+		}
+	}
+}
+
