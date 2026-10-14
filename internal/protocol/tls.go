@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 // TLSDissector parses unencrypted TLS ClientHello handshakes to extract SNI hostnames.
@@ -107,9 +106,20 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 			}
 
 			serverName := string(payload[offset+5 : offset+5+nameLen])
-			versionStr := fmt.Sprintf("TLS 1.%d", clientVerMinor-1)
-			if clientVerMajor == 3 && clientVerMinor == 3 {
-				versionStr = "TLS 1.2/1.3"
+			var versionStr string
+			if clientVerMajor == 3 {
+				switch clientVerMinor {
+				case 1:
+					versionStr = "TLS 1.0"
+				case 2:
+					versionStr = "TLS 1.1"
+				case 3:
+					versionStr = "TLS 1.2/1.3"
+				default:
+					versionStr = "TLS"
+				}
+			} else {
+				versionStr = "SSL"
 			}
 
 			return VerdictMatched, Metadata{

@@ -3,7 +3,6 @@ package protocol
 import (
 	"encoding/binary"
 	"fmt"
-	"strings"
 )
 
 // DNSDissector parses DNS queries and responses without heap allocations in the hot path.
@@ -38,7 +37,8 @@ func (d *DNSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	}
 
 	offset := 12
-	var labels []string
+	var nameBuf [256]byte
+	nameLen := 0
 	jumpCount := 0
 
 	for {
@@ -72,16 +72,22 @@ func (d *DNSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 			return VerdictNeedMoreData, Metadata{}, nil
 		}
 
-		label := string(payload[offset : offset+length])
-		labels = append(labels, label)
+		if nameLen > 0 && nameLen < 255 {
+			nameBuf[nameLen] = '.'
+			nameLen++
+		}
+		if nameLen+length <= 255 {
+			copy(nameBuf[nameLen:], payload[offset:offset+length])
+			nameLen += length
+		}
 		offset += length
 	}
 
-	if len(labels) == 0 {
+	if nameLen == 0 {
 		return VerdictUnknown, Metadata{}, nil
 	}
 
-	domain := strings.Join(labels, ".")
+	domain := string(nameBuf[:nameLen])
 
 	var qTypeStr string
 	if offset+2 <= len(payload) {

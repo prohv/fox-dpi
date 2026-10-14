@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"strings"
 )
 
 // HTTPDissector parses HTTP/1.1 request lines and headers without decoding full bodies.
@@ -38,7 +37,7 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	var matchedMethod string
 	for _, m := range httpMethods {
 		if bytes.HasPrefix(payload, m) {
-			matchedMethod = strings.TrimSpace(string(m))
+			matchedMethod = string(bytes.TrimSpace(m))
 			break
 		}
 	}
@@ -49,10 +48,8 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 
 	// 2. Check for end of headers (\r\n\r\n or \n\n)
 	headerEnd := bytes.Index(payload, []byte("\r\n\r\n"))
-	delimiterLen := 4
 	if headerEnd == -1 {
 		headerEnd = bytes.Index(payload, []byte("\n\n"))
-		delimiterLen = 2
 	}
 
 	if headerEnd == -1 {
@@ -60,43 +57,57 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		return VerdictNeedMoreData, Metadata{}, nil
 	}
 
-	headerSection := payload[:headerEnd+delimiterLen]
-	lines := bytes.Split(headerSection, []byte("\n"))
-
+	headerSection := payload[:headerEnd]
 	var host, userAgent, path string
 
 	// Parse request target from line 0
-	if len(lines) > 0 {
-		reqParts := bytes.Fields(lines[0])
-		if len(reqParts) >= 2 {
-			path = string(reqParts[1])
+	firstLineEnd := bytes.IndexByte(headerSection, '\n')
+	if firstLineEnd == -1 {
+		firstLineEnd = len(headerSection)
+	}
+	firstLine := bytes.TrimRight(headerSection[:firstLineEnd], "\r")
+	if sp1 := bytes.IndexByte(firstLine, ' '); sp1 != -1 {
+		rest := firstLine[sp1+1:]
+		if sp2 := bytes.IndexByte(rest, ' '); sp2 != -1 {
+			path = string(rest[:sp2])
+		} else {
+			path = string(rest)
 		}
 	}
 
-	for _, line := range lines[1:] {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
+	// Scan headers line-by-line without heap allocations
+	rem := headerSection[firstLineEnd:]
+	for len(rem) > 0 {
+		if rem[0] == '\n' {
+			rem = rem[1:]
 			continue
 		}
-
+		lineEnd := bytes.IndexByte(rem, '\n')
+		var line []byte
+		if lineEnd == -1 {
+			line = rem
+			rem = nil
+		} else {
+			line = rem[:lineEnd]
+			rem = rem[lineEnd+1:]
+		}
+		line = bytes.TrimRight(line, "\r")
 		colonIdx := bytes.IndexByte(line, ':')
 		if colonIdx == -1 {
 			continue
 		}
 
-		headerName := strings.ToLower(string(bytes.TrimSpace(line[:colonIdx])))
-		headerVal := string(bytes.TrimSpace(line[colonIdx+1:]))
+		key := bytes.TrimSpace(line[:colonIdx])
+		val := bytes.TrimSpace(line[colonIdx+1:])
 
-		switch headerName {
-		case "host":
-			// Strip port if present: example.com:8080 -> example.com
-			if h, _, found := strings.Cut(headerVal, ":"); found {
-				host = h
+		if bytes.EqualFold(key, []byte("host")) {
+			if h, _, found := bytes.Cut(val, []byte(":")); found {
+				host = string(h)
 			} else {
-				host = headerVal
+				host = string(val)
 			}
-		case "user-agent":
-			userAgent = headerVal
+		} else if bytes.EqualFold(key, []byte("user-agent")) {
+			userAgent = string(val)
 		}
 	}
 
