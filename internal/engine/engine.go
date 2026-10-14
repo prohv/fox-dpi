@@ -9,6 +9,8 @@ import (
 
 	"fox-dpi/internal/capture"
 	"fox-dpi/internal/flow"
+	"fox-dpi/internal/protocol"
+	"fox-dpi/internal/reassembly"
 
 	"github.com/google/gopacket/layers"
 )
@@ -26,6 +28,7 @@ type Metrics struct {
 type Engine struct {
 	table        *flow.FlowTable
 	decapsulator *capture.Decapsulator
+	dispatcher   *protocol.Dispatcher
 	worker       *flow.EvictionWorker
 	evictConfig  flow.EvictionConfig
 
@@ -47,6 +50,7 @@ func NewEngine(linkType layers.LinkType, cfg flow.EvictionConfig) (*Engine, erro
 	return &Engine{
 		table:        tbl,
 		decapsulator: d,
+		dispatcher:   protocol.NewDispatcher(),
 		worker:       worker,
 		evictConfig:  cfg,
 	}, nil
@@ -57,7 +61,7 @@ func (e *Engine) Table() *flow.FlowTable {
 	return e.table
 }
 
-// ProcessFrame decapsulates a single raw frame and updates its canonical flow.
+// ProcessFrame decapsulates a single raw frame, reassembles streams, and updates L7 metadata.
 func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 	atomic.AddUint64(&e.totalPackets, 1)
 	atomic.AddUint64(&e.totalBytes, uint64(len(data)))
@@ -70,6 +74,32 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 
 	key := flow.NewFlowKey(pkt.SrcIP, pkt.SrcPort, pkt.DstIP, pkt.DstPort, pkt.Proto)
 	f := e.table.GetOrCreate(key, pkt.SrcIP, pkt.SrcPort, pkt.Length, pkt.TCPFlags, ts)
+
+	// L7 Inspection Pipeline
+	if len(pkt.Payload) > 0 && !f.L7Bypass {
+		if pkt.Proto == 17 { // UDP (e.g. DNS)
+			verdict, meta, _ := e.dispatcher.Dispatch(pkt.Payload, 17)
+			if verdict == protocol.VerdictMatched {
+				f.SetL7Metadata(meta)
+			}
+		} else if pkt.Proto == 6 { // TCP (e.g. TLS, HTTP)
+			if f.Reassembler == nil {
+				f.Reassembler = reassembly.NewStreamReassembler(pkt.TCPSeq)
+			}
+			stream := f.Reassembler.Push(pkt.TCPSeq, pkt.Payload)
+			if len(stream) > 0 {
+				verdict, meta, _ := e.dispatcher.Dispatch(stream, 6)
+				if verdict == protocol.VerdictMatched {
+					f.SetL7Metadata(meta)
+				} else if verdict == protocol.VerdictUnknown && len(stream) >= 512 {
+					// Stop inspecting unknown binary protocols after 512 bytes
+					f.L7Bypass = true
+					f.Reassembler.Reset()
+				}
+			}
+		}
+	}
+
 	return f, nil
 }
 

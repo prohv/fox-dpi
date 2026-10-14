@@ -24,6 +24,7 @@ type DecodedPacket struct {
 	DstPort  uint16
 	Proto    uint8
 	TCPFlags uint8
+	TCPSeq   uint32
 	Payload  []byte
 	Length   int
 }
@@ -120,6 +121,7 @@ func (d *Decapsulator) Decode(data []byte) (*DecodedPacket, error) {
 			d.output.SrcPort = uint16(d.tcp.SrcPort)
 			d.output.DstPort = uint16(d.tcp.DstPort)
 			d.output.Payload = d.tcp.Payload
+			d.output.TCPSeq = d.tcp.Seq
 			d.output.TCPFlags = 0
 			if d.tcp.SYN {
 				d.output.TCPFlags |= FlagSYN
