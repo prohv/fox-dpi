@@ -1,0 +1,98 @@
+package flow
+
+import (
+	"net/netip"
+	"time"
+)
+
+// Direction indicates the transmission direction relative to the connection initiator.
+type Direction uint8
+
+const (
+	DirectionClientToServer Direction = iota
+	DirectionServerToClient
+)
+
+// Flow maintains connection metrics and lifecycle state for a bidirectional conversation.
+type Flow struct {
+	Key           FlowKey
+	InitiatorIP   netip.Addr
+	InitiatorPort uint16
+
+	ClientPackets uint64
+	ClientBytes   uint64
+	ServerPackets uint64
+	ServerBytes   uint64
+
+	FirstSeen time.Time
+	LastSeen  time.Time
+	CloseTime time.Time
+
+	Closing       bool
+	SynSeen       bool
+	SynAckSeen    bool
+	HandshakeRTT  time.Duration
+}
+
+// NewFlow initializes a new connection record with the initiator set from the first packet.
+func NewFlow(key FlowKey, srcIP netip.Addr, srcPort uint16, length int, tcpFlags uint8, t time.Time) *Flow {
+	f := &Flow{
+		Key:           key,
+		InitiatorIP:   srcIP,
+		InitiatorPort: srcPort,
+		FirstSeen:     t,
+		LastSeen:      t,
+	}
+	f.Update(srcIP, srcPort, length, tcpFlags, t)
+	return f
+}
+
+// Update records directional packet volume, tracks TCP handshake latency, and detects teardown flags.
+func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uint8, t time.Time) {
+	f.LastSeen = t
+
+	isClient := (srcIP == f.InitiatorIP && srcPort == f.InitiatorPort)
+	if isClient {
+		f.ClientPackets++
+		f.ClientBytes += uint64(length)
+	} else {
+		f.ServerPackets++
+		f.ServerBytes += uint64(length)
+	}
+
+	// TCP Handshake RTT tracking: SYN from client, SYN-ACK from server
+	const flagSYN = 1 << 0
+	const flagACK = 1 << 1
+	const flagFIN = 1 << 2
+	const flagRST = 1 << 3
+
+	if (tcpFlags & flagSYN) != 0 {
+		if isClient && (tcpFlags&flagACK) == 0 {
+			f.SynSeen = true
+		} else if !isClient && (tcpFlags&flagACK) != 0 && f.SynSeen && !f.SynAckSeen {
+			f.SynAckSeen = true
+			if t.After(f.FirstSeen) {
+				f.HandshakeRTT = t.Sub(f.FirstSeen)
+			}
+		}
+	}
+
+	// Teardown detection: mark closing on FIN or RST
+	if (tcpFlags&flagFIN) != 0 || (tcpFlags&flagRST) != 0 {
+		if !f.Closing {
+			f.Closing = true
+			f.CloseTime = t
+		}
+	}
+}
+
+// IsExpired evaluates whether a flow should be evicted given idle and teardown deadlines.
+func (f *Flow) IsExpired(now time.Time, tcpIdle, udpIdle, closeGrace time.Duration) bool {
+	if f.Closing {
+		return now.Sub(f.CloseTime) >= closeGrace
+	}
+	if f.Key.Proto == 6 { // TCP
+		return now.Sub(f.LastSeen) >= tcpIdle
+	}
+	return now.Sub(f.LastSeen) >= udpIdle
+}
