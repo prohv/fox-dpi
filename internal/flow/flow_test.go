@@ -30,8 +30,8 @@ func Test_Flow_L7Lifecycle_TLS_Bypass(t *testing.T) {
 	if !f.L7Bypass {
 		t.Fatal("expected TLS flow to enable L7Bypass for encrypted traffic")
 	}
-	if len(f.Reassembler.Buffer()) != 0 {
-		t.Fatalf("expected reassembly buffer to be freed after TLS match, got %d bytes", len(f.Reassembler.Buffer()))
+	if f.Reassembler != nil {
+		t.Fatalf("expected reassembler to be returned to pool after TLS match, got non-nil")
 	}
 }
 

@@ -84,7 +84,7 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 			}
 		} else if pkt.Proto == 6 { // TCP (e.g. TLS, HTTP)
 			if f.Reassembler == nil {
-				f.Reassembler = reassembly.NewStreamReassembler(pkt.TCPSeq)
+				f.Reassembler = reassembly.GetReassembler(pkt.TCPSeq)
 			}
 			stream := f.Reassembler.Push(pkt.TCPSeq, pkt.Payload)
 			if len(stream) > 0 {
@@ -94,7 +94,8 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 				} else if verdict == protocol.VerdictUnknown && len(stream) >= 512 {
 					// Stop inspecting unknown binary protocols after 512 bytes
 					f.L7Bypass = true
-					f.Reassembler.Reset()
+					reassembly.PutReassembler(f.Reassembler)
+					f.Reassembler = nil
 				}
 			}
 		}

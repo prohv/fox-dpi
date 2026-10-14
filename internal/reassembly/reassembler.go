@@ -2,6 +2,7 @@ package reassembly
 
 import (
 	"sort"
+	"sync"
 )
 
 // MaxBufferSize caps buffer growth to 4 KB to prevent Reassembly Memory Exhaustion DoS.
@@ -10,6 +11,15 @@ const MaxBufferSize = 4096
 type segment struct {
 	seq  uint32
 	data []byte
+}
+
+var reassemblerPool = sync.Pool{
+	New: func() any {
+		return &StreamReassembler{
+			buffer:  make([]byte, 0, 1024),
+			pending: make([]segment, 0, 8),
+		}
+	},
 }
 
 // StreamReassembler tracks TCP sequence numbers and stitches out-of-order segments within a 4 KB window.
@@ -24,12 +34,33 @@ type StreamReassembler struct {
 // NewStreamReassembler initializes an empty bounded reassembler.
 // If baseSeq is provided (from SYN), it establishes the expected starting sequence.
 func NewStreamReassembler(baseSeq uint32) *StreamReassembler {
-	return &StreamReassembler{
-		nextSeq:     baseSeq,
-		initialized: baseSeq != 0,
-		buffer:      make([]byte, 0, 1024),
-		pending:     make([]segment, 0, 8),
+	return GetReassembler(baseSeq)
+}
+
+// GetReassembler borrows a clean reassembler from the memory pool.
+func GetReassembler(baseSeq uint32) *StreamReassembler {
+	r := reassemblerPool.Get().(*StreamReassembler)
+	r.nextSeq = baseSeq
+	r.initialized = baseSeq != 0
+	r.disabled = false
+	if cap(r.buffer) > MaxBufferSize*2 {
+		r.buffer = make([]byte, 0, 1024)
+	} else {
+		r.buffer = r.buffer[:0]
 	}
+	r.pending = r.pending[:0]
+	return r
+}
+
+// PutReassembler returns a reassembler to the pool for reuse.
+func PutReassembler(r *StreamReassembler) {
+	if r == nil {
+		return
+	}
+	r.disabled = true
+	r.buffer = r.buffer[:0]
+	r.pending = r.pending[:0]
+	reassemblerPool.Put(r)
 }
 
 // Push ingests a TCP payload at the specified sequence number and returns the contiguous buffer.

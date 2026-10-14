@@ -115,12 +115,13 @@ func (f *Flow) SetL7Metadata(meta protocol.Metadata) {
 	if meta.Protocol == "TLS" {
 		f.L7Bypass = true
 		if f.Reassembler != nil {
-			f.Reassembler.Reset()
+			reassembly.PutReassembler(f.Reassembler)
+			f.Reassembler = nil
 		}
 	} else if meta.Protocol == "HTTP" {
 		if f.Reassembler != nil {
-			f.Reassembler.Reset()
-			f.Reassembler = reassembly.NewStreamReassembler(0)
+			reassembly.PutReassembler(f.Reassembler)
+			f.Reassembler = reassembly.GetReassembler(0)
 		}
 	}
 }
