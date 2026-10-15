@@ -3,7 +3,6 @@ package sink
 import (
 	"bufio"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -239,22 +238,20 @@ func NewFileSink(cfg FileSinkConfig) (*FileSink, error) {
 
 func (f *FileSink) flowWorker() {
 	defer f.workersWg.Done()
+	scratch := make([]byte, 0, 512)
 	for event := range f.flowChan {
-		data, err := json.Marshal(event)
-		if err == nil {
-			_ = f.flowsWriter.Write(data)
-		}
+		scratch = event.AppendJSON(scratch[:0])
+		_ = f.flowsWriter.Write(scratch)
 	}
 	_ = f.flowsWriter.Close()
 }
 
 func (f *FileSink) alertWorker() {
 	defer f.workersWg.Done()
+	scratch := make([]byte, 0, 512)
 	for event := range f.alertChan {
-		data, err := json.Marshal(event)
-		if err == nil {
-			_ = f.alertsWriter.Write(data)
-		}
+		scratch = event.AppendJSON(scratch[:0])
+		_ = f.alertsWriter.Write(scratch)
 	}
 	_ = f.alertsWriter.Close()
 }

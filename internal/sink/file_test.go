@@ -239,3 +239,53 @@ func BenchmarkFileSink_EmitFlow(b *testing.B) {
 		s.EmitFlow(ev)
 	}
 }
+
+func Benchmark_JSON_Stdlib_Marshal(b *testing.B) {
+	ev := FlowEvent{
+		Timestamp:   time.Now(),
+		SrcIP:       "192.168.1.100",
+		DstIP:       "142.250.190.46",
+		SrcPort:     51234,
+		DstPort:     443,
+		Protocol:    "TCP",
+		L7Protocol:  "TLS",
+		Host:        "google.com",
+		Packets:     10,
+		Bytes:       2400,
+		DurationMs:  150,
+		HandshakeMs: 18,
+		Details:     map[string]string{"version": "TLS 1.3"},
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = json.Marshal(ev)
+	}
+}
+
+func Benchmark_JSON_ZeroAlloc_AppendJSON(b *testing.B) {
+	ev := FlowEvent{
+		Timestamp:   time.Now(),
+		SrcIP:       "192.168.1.100",
+		DstIP:       "142.250.190.46",
+		SrcPort:     51234,
+		DstPort:     443,
+		Protocol:    "TCP",
+		L7Protocol:  "TLS",
+		Host:        "google.com",
+		Packets:     10,
+		Bytes:       2400,
+		DurationMs:  150,
+		HandshakeMs: 18,
+		Details:     map[string]string{"version": "TLS 1.3"},
+	}
+
+	scratch := make([]byte, 0, 512)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		scratch = ev.AppendJSON(scratch[:0])
+	}
+}
+
