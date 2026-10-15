@@ -26,17 +26,23 @@ func DefaultEvictionConfig() EvictionConfig {
 
 // EvictionWorker runs periodic background sweeps across all shards.
 type EvictionWorker struct {
-	table         *FlowTable
-	config        EvictionConfig
-	totalEvicted  uint64
-	sweepCount    uint64
+	table        *FlowTable
+	config       EvictionConfig
+	onEvict      func(*Flow)
+	totalEvicted uint64
+	sweepCount   uint64
 }
 
 // NewEvictionWorker creates a worker bound to a flow table.
-func NewEvictionWorker(table *FlowTable, cfg EvictionConfig) *EvictionWorker {
+func NewEvictionWorker(table *FlowTable, cfg EvictionConfig, onEvict ...func(*Flow)) *EvictionWorker {
+	var cb func(*Flow)
+	if len(onEvict) > 0 {
+		cb = onEvict[0]
+	}
 	return &EvictionWorker{
-		table:  table,
-		config: cfg,
+		table:   table,
+		config:  cfg,
+		onEvict: cb,
 	}
 }
 
@@ -50,7 +56,7 @@ func (w *EvictionWorker) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-ticker.C:
-			evicted := w.table.EvictExpired(t, w.config.TCPIdle, w.config.UDPIdle, w.config.CloseGrace)
+			evicted := w.table.EvictExpiredWithCallback(t, w.config.TCPIdle, w.config.UDPIdle, w.config.CloseGrace, w.onEvict)
 			atomic.AddUint64(&w.totalEvicted, uint64(evicted))
 			atomic.AddUint64(&w.sweepCount, 1)
 		}

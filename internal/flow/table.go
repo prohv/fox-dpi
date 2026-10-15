@@ -4,6 +4,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"fox-dpi/internal/reassembly"
 )
 
 // NumShards must be a power of 2 for fast bitwise masking.
@@ -76,6 +78,11 @@ func (t *FlowTable) Count() int {
 
 // EvictExpired sweeps through shards, removing flows exceeding their retention deadline.
 func (t *FlowTable) EvictExpired(now time.Time, tcpIdle, udpIdle, closeGrace time.Duration) int {
+	return t.EvictExpiredWithCallback(now, tcpIdle, udpIdle, closeGrace, nil)
+}
+
+// EvictExpiredWithCallback sweeps through shards, purges expired flows, recycles buffers, and invokes onEvict.
+func (t *FlowTable) EvictExpiredWithCallback(now time.Time, tcpIdle, udpIdle, closeGrace time.Duration, onEvict func(*Flow)) int {
 	evicted := 0
 	for i := 0; i < NumShards; i++ {
 		shard := &t.shards[i]
@@ -84,6 +91,13 @@ func (t *FlowTable) EvictExpired(now time.Time, tcpIdle, udpIdle, closeGrace tim
 		for key, f := range shard.flows {
 			if f.IsExpired(now, tcpIdle, udpIdle, closeGrace) {
 				delete(shard.flows, key)
+				if f.Reassembler != nil {
+					reassembly.PutReassembler(f.Reassembler)
+					f.Reassembler = nil
+				}
+				if onEvict != nil {
+					onEvict(f)
+				}
 				evicted++
 			}
 		}
@@ -91,3 +105,27 @@ func (t *FlowTable) EvictExpired(now time.Time, tcpIdle, udpIdle, closeGrace tim
 	}
 	return evicted
 }
+
+// DrainAll removes and emits all active flows across all shards upon engine shutdown.
+func (t *FlowTable) DrainAll(onEvict func(*Flow)) int {
+	drained := 0
+	for i := 0; i < NumShards; i++ {
+		shard := &t.shards[i]
+
+		shard.mu.Lock()
+		for key, f := range shard.flows {
+			delete(shard.flows, key)
+			if f.Reassembler != nil {
+				reassembly.PutReassembler(f.Reassembler)
+				f.Reassembler = nil
+			}
+			if onEvict != nil {
+				onEvict(f)
+			}
+			drained++
+		}
+		shard.mu.Unlock()
+	}
+	return drained
+}
+

@@ -39,6 +39,7 @@ type Flow struct {
 	L7Metadata   protocol.Metadata
 	L7Identified bool
 	L7Bypass     bool
+	AlertEmitted bool
 	Reassembler  *reassembly.StreamReassembler
 }
 
@@ -124,5 +125,27 @@ func (f *Flow) SetL7Metadata(meta protocol.Metadata) {
 			f.Reassembler = reassembly.GetReassembler(0)
 		}
 	}
+}
+
+// ResponderIP returns the IP address of the peer receiving the connection.
+func (f *Flow) ResponderIP() netip.Addr {
+	if f.InitiatorIP == f.Key.LowIP {
+		return f.Key.HighIP
+	}
+	return f.Key.LowIP
+}
+
+// ResponderPort returns the port of the peer receiving the connection.
+func (f *Flow) ResponderPort() uint16 {
+	if f.InitiatorIP == f.Key.LowIP && f.InitiatorPort == f.Key.LowPort {
+		return f.Key.HighPort
+	}
+	if f.InitiatorIP == f.Key.HighIP && f.InitiatorPort == f.Key.HighPort {
+		return f.Key.LowPort
+	}
+	if f.InitiatorPort == f.Key.LowPort {
+		return f.Key.HighPort
+	}
+	return f.Key.LowPort
 }
 
