@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/binary"
 )
 
 // HTTPDissector parses HTTP/1.1 request lines and headers without decoding full bodies.
@@ -15,16 +16,27 @@ func (d *HTTPDissector) Name() string {
 	return "HTTP"
 }
 
-// Known HTTP request method prefixes
-var httpMethods = [][]byte{
-	[]byte("GET "),
-	[]byte("POST "),
-	[]byte("PUT "),
-	[]byte("DELETE "),
-	[]byte("HEAD "),
-	[]byte("OPTIONS "),
-	[]byte("PATCH "),
-	[]byte("CONNECT "),
+// 32-bit little-endian constants for instant 1-cycle method dispatch
+const (
+	methodGET  = 0x20544547 // "GET "
+	methodPOST = 0x54534F50 // "POST"
+	methodHEAD = 0x44414548 // "HEAD"
+	methodPUT  = 0x20545550 // "PUT "
+
+	// "HOST" in 32-bit little-endian
+	magicHost = uint32('H') | uint32('O')<<8 | uint32('S')<<16 | uint32('T')<<24
+	// "USER" in 32-bit little-endian
+	magicUser = uint32('U') | uint32('S')<<8 | uint32('E')<<16 | uint32('R')<<24
+)
+
+func trimHTTPSpace(b []byte) []byte {
+	for len(b) > 0 && (b[0] == ' ' || b[0] == '\t') {
+		b = b[1:]
+	}
+	for len(b) > 0 && (b[len(b)-1] == ' ' || b[len(b)-1] == '\t') {
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 // Inspect identifies ASCII HTTP methods, checks header boundaries, and extracts Host and User-Agent.
@@ -33,12 +45,32 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		return VerdictUnknown, Metadata{}, nil
 	}
 
-	// 1. Fast match request method
+	// 1. Single-instruction 32-bit method matching
+	magic := binary.LittleEndian.Uint32(payload[:4])
 	var matchedMethod string
-	for _, m := range httpMethods {
-		if bytes.HasPrefix(payload, m) {
-			matchedMethod = string(bytes.TrimSpace(m))
-			break
+	switch magic {
+	case methodGET:
+		matchedMethod = "GET"
+	case methodPOST:
+		if len(payload) > 4 && payload[4] == ' ' {
+			matchedMethod = "POST"
+		}
+	case methodHEAD:
+		if len(payload) > 4 && payload[4] == ' ' {
+			matchedMethod = "HEAD"
+		}
+	case methodPUT:
+		matchedMethod = "PUT"
+	default:
+		// Fallback for rarer methods
+		if bytes.HasPrefix(payload, []byte("DELETE ")) {
+			matchedMethod = "DELETE"
+		} else if bytes.HasPrefix(payload, []byte("OPTIONS ")) {
+			matchedMethod = "OPTIONS"
+		} else if bytes.HasPrefix(payload, []byte("PATCH ")) {
+			matchedMethod = "PATCH"
+		} else if bytes.HasPrefix(payload, []byte("CONNECT ")) {
+			matchedMethod = "CONNECT"
 		}
 	}
 
@@ -65,7 +97,11 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	if firstLineEnd == -1 {
 		firstLineEnd = len(headerSection)
 	}
-	firstLine := bytes.TrimRight(headerSection[:firstLineEnd], "\r")
+	firstLine := headerSection[:firstLineEnd]
+	if len(firstLine) > 0 && firstLine[len(firstLine)-1] == '\r' {
+		firstLine = firstLine[:len(firstLine)-1]
+	}
+
 	if sp1 := bytes.IndexByte(firstLine, ' '); sp1 != -1 {
 		rest := firstLine[sp1+1:]
 		if sp2 := bytes.IndexByte(rest, ' '); sp2 != -1 {
@@ -75,7 +111,7 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		}
 	}
 
-	// Scan headers line-by-line without heap allocations
+	// Fast line-by-line header parsing
 	rem := headerSection[firstLineEnd:]
 	for len(rem) > 0 {
 		if rem[0] == '\n' {
@@ -91,22 +127,25 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 			line = rem[:lineEnd]
 			rem = rem[lineEnd+1:]
 		}
-		line = bytes.TrimRight(line, "\r")
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
 		colonIdx := bytes.IndexByte(line, ':')
 		if colonIdx == -1 {
 			continue
 		}
 
-		key := bytes.TrimSpace(line[:colonIdx])
-		val := bytes.TrimSpace(line[colonIdx+1:])
+		key := trimHTTPSpace(line[:colonIdx])
+		val := trimHTTPSpace(line[colonIdx+1:])
 
-		if bytes.EqualFold(key, []byte("host")) {
+		// Bitwise case-insensitive header matching
+		if len(key) == 4 && (binary.LittleEndian.Uint32(key)&0xDFDFDFDF) == magicHost {
 			if h, _, found := bytes.Cut(val, []byte(":")); found {
 				host = string(h)
 			} else {
 				host = string(val)
 			}
-		} else if bytes.EqualFold(key, []byte("user-agent")) {
+		} else if len(key) == 10 && (binary.LittleEndian.Uint32(key[:4])&0xDFDFDFDF) == magicUser && key[4] == '-' {
 			userAgent = string(val)
 		}
 	}
