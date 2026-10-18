@@ -87,7 +87,7 @@ func (d *DNSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		return VerdictUnknown, Metadata{}, nil
 	}
 
-	domain := string(nameBuf[:nameLen])
+	domain := InternString(nameBuf[:nameLen])
 
 	var qTypeStr string
 	if offset+2 <= len(payload) {
@@ -103,11 +103,34 @@ func (d *DNSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	return VerdictMatched, Metadata{
 		Protocol: "DNS",
 		Host:     domain,
-		Details: map[string]string{
-			"role":  role,
-			"qtype": qTypeStr,
-		},
+		Details:  getDNSDetails(role, qTypeStr),
 	}, nil
+}
+
+var (
+	dnsQueryA    = map[string]string{"role": "query", "qtype": "A"}
+	dnsQueryAAAA = map[string]string{"role": "query", "qtype": "AAAA"}
+	dnsRespA     = map[string]string{"role": "response", "qtype": "A"}
+	dnsRespAAAA  = map[string]string{"role": "response", "qtype": "AAAA"}
+)
+
+func getDNSDetails(role, qtype string) map[string]string {
+	if role == "query" {
+		if qtype == "A" {
+			return dnsQueryA
+		}
+		if qtype == "AAAA" {
+			return dnsQueryAAAA
+		}
+	} else if role == "response" {
+		if qtype == "A" {
+			return dnsRespA
+		}
+		if qtype == "AAAA" {
+			return dnsRespAAAA
+		}
+	}
+	return map[string]string{"role": role, "qtype": qtype}
 }
 
 func dnsTypeToString(t uint16) string {

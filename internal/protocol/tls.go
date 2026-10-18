@@ -105,7 +105,7 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 				return VerdictNeedMoreData, Metadata{}, nil
 			}
 
-			serverName := string(payload[offset+5 : offset+5+nameLen])
+			serverName := InternString(payload[offset+5 : offset+5+nameLen])
 			var versionStr string
 			if clientVerMajor == 3 {
 				switch clientVerMinor {

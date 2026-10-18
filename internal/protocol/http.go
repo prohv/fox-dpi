@@ -141,12 +141,12 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		// Bitwise case-insensitive header matching
 		if len(key) == 4 && (binary.LittleEndian.Uint32(key)&0xDFDFDFDF) == magicHost {
 			if h, _, found := bytes.Cut(val, []byte(":")); found {
-				host = string(h)
+				host = InternString(h)
 			} else {
-				host = string(val)
+				host = InternString(val)
 			}
 		} else if len(key) == 10 && (binary.LittleEndian.Uint32(key[:4])&0xDFDFDFDF) == magicUser && key[4] == '-' {
-			userAgent = string(val)
+			userAgent = InternString(val)
 		}
 	}
 
