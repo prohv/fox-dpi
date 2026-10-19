@@ -319,9 +319,10 @@ func Test_Pillar1_Reverse_Out_Of_Order_Delivery(t *testing.T) {
 	f, _ := eng.ProcessFrame(p1, now.Add(4*time.Millisecond))
 
 	if f == nil || f.L7Metadata.Protocol != "HTTP" {
-		t.Logf("LIMITATION DISCOVERED: When segments arrive strictly in reverse order, reassembler locks to first-seen higher sequence and discards preceding segments.")
-	} else {
-		t.Logf("PASS: Reverse out-of-order delivery correctly reassembled into valid HTTP stream.")
+		t.Fatalf("expected HTTP protocol from reverse out-of-order delivery, got: %+v", f)
+	}
+	if f.L7Metadata.Host != "a.com" {
+		t.Errorf("expected Host 'a.com', got: %s", f.L7Metadata.Host)
 	}
 }
 
