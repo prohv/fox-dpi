@@ -230,7 +230,25 @@ func Test_Pillar1_Junk_Prefix_Evasion(t *testing.T) {
 	f, _ := eng.ProcessFrame(pkt, time.Now())
 
 	if f == nil || f.L7Metadata.Protocol != "TLS" {
-		t.Logf("LIMITATION DISCOVERED: Prepending 16 junk bytes before TLS bypasses magic-byte dispatcher (matched: %s).", f.L7Metadata.Protocol)
+		t.Fatalf("expected TLS protocol after 16 bytes of junk padding, got: %+v", f)
+	}
+	if f.L7Metadata.Host != "hidden-c2.evil.com" {
+		t.Errorf("expected Host 'hidden-c2.evil.com', got: %s", f.L7Metadata.Host)
+	}
+
+	// Verify PROTOCOL_PADDING_EVASION alert fired
+	var foundPaddingAlert bool
+	for _, a := range snk.alerts {
+		if a.Rule == "PROTOCOL_PADDING_EVASION" {
+			foundPaddingAlert = true
+			if a.Severity != "HIGH" {
+				t.Errorf("expected severity HIGH, got %s", a.Severity)
+			}
+			break
+		}
+	}
+	if !foundPaddingAlert {
+		t.Fatalf("expected PROTOCOL_PADDING_EVASION alert to fire")
 	}
 }
 

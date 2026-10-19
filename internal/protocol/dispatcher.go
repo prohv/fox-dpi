@@ -1,5 +1,10 @@
 package protocol
 
+import (
+	"bytes"
+	"strconv"
+)
+
 // Dispatcher coordinates protocol parsers using fast magic-byte prefix matching.
 type Dispatcher struct {
 	dns  *DNSDissector
@@ -29,7 +34,7 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 
 	// TCP Path: Evaluate TLS and HTTP via magic prefix
 	if proto == 6 {
-		// TLS Handshake prefix check: 0x16 0x03
+		// 1. Fast-Path: Zero-offset check (99% of normal traffic, 1-cycle check)
 		if payload[0] == 0x16 {
 			if len(payload) >= 2 && payload[1] == 0x03 {
 				return d.tls.Inspect(payload)
@@ -37,9 +42,47 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 			return VerdictNeedMoreData, Metadata{}, nil
 		}
 
-		// HTTP prefix fast check
 		if isHTTPPrefix(payload) {
 			return d.http.Inspect(payload)
+		}
+
+		// 2. Sliding-Window Scan (Bounded to 64 bytes) for Padding Evasion Defense (MITRE T1001.003)
+		limit := len(payload)
+		if limit > 64 {
+			limit = 64
+		}
+		if limit >= 2 {
+			window := payload[:limit]
+
+			// Fast search for TLS magic bytes 0x16 0x03
+			if idx := bytes.Index(window, []byte{0x16, 0x03}); idx != -1 {
+				v, m, err := d.tls.Inspect(payload[idx:])
+				if v == VerdictMatched {
+					if m.Details == nil {
+						m.Details = make(map[string]string)
+					}
+					m.Details["padding_offset"] = strconv.Itoa(idx)
+					return v, m, err
+				} else if v == VerdictNeedMoreData {
+					return v, m, err
+				}
+			}
+
+			// Fast search for HTTP verbs
+			for i := 1; i <= limit-4; i++ {
+				if isHTTPPrefix(payload[i:]) {
+					v, m, err := d.http.Inspect(payload[i:])
+					if v == VerdictMatched {
+						if m.Details == nil {
+							m.Details = make(map[string]string)
+						}
+						m.Details["padding_offset"] = strconv.Itoa(i)
+						return v, m, err
+					} else if v == VerdictNeedMoreData {
+						return v, m, err
+					}
+				}
+			}
 		}
 	}
 

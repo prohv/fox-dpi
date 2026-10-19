@@ -132,6 +132,24 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 		protoStr = "UDP"
 	}
 
+	// Rule 0: Protocol Padding Evasion (Junk noise prepended before L7 payload)
+	if padOffset, ok := f.L7Metadata.Details["padding_offset"]; ok && padOffset != "0" {
+		f.AlertEmitted = true
+		e.sink.EmitAlert(sink.AlertEvent{
+			Timestamp: f.LastSeen,
+			Rule:      "PROTOCOL_PADDING_EVASION",
+			Severity:  "HIGH",
+			SrcIP:     f.InitiatorIP.String(),
+			DstIP:     respIP.String(),
+			SrcPort:   f.InitiatorPort,
+			DstPort:   respPort,
+			Protocol:  protoStr,
+			Message:   fmt.Sprintf("Protocol padding detected: %s junk bytes prepended before %s payload", padOffset, f.L7Metadata.Protocol),
+			Details:   f.L7Metadata.Details,
+		})
+		return
+	}
+
 	// Rule 1: HTTP on port 443 (Cleartext on TLS port)
 	if f.L7Metadata.Protocol == "HTTP" && respPort == 443 {
 		f.AlertEmitted = true
