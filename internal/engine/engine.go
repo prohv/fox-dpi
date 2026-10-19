@@ -150,19 +150,42 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 		return
 	}
 
-	// Rule 2: TLS on non-standard HTTP port (e.g. 80, 8080)
-	if f.L7Metadata.Protocol == "TLS" && (respPort == 80 || respPort == 8080) {
+	// Rule 2: TLS Port Checks
+	if f.L7Metadata.Protocol == "TLS" {
+		// Fast-path: standard HTTPS port (99% of traffic), exit immediately in 1 cycle
+		if respPort == 443 || respPort == 8443 {
+			return
+		}
+
 		f.AlertEmitted = true
+		if respPort == 80 || respPort == 8080 {
+			// Plain HTTP port spoofing
+			e.sink.EmitAlert(sink.AlertEvent{
+				Timestamp: f.LastSeen,
+				Rule:      "PORT_SPOOF_TLS",
+				Severity:  "WARN",
+				SrcIP:     f.InitiatorIP.String(),
+				DstIP:     respIP.String(),
+				SrcPort:   f.InitiatorPort,
+				DstPort:   respPort,
+				Protocol:  protoStr,
+				Message:   fmt.Sprintf("Encrypted TLS traffic detected on plain HTTP port %d", respPort),
+				Details:   f.L7Metadata.Details,
+			})
+			return
+		}
+
+		// TLS on arbitrary non-standard port (e.g. 4444, 1337 - C2 beaconing)
 		e.sink.EmitAlert(sink.AlertEvent{
 			Timestamp: f.LastSeen,
-			Rule:      "PORT_SPOOF_TLS",
-			Severity:  "WARN",
+			Rule:      "SUSPICIOUS_HIGH_PORT_TLS",
+			Severity:  "HIGH",
 			SrcIP:     f.InitiatorIP.String(),
 			DstIP:     respIP.String(),
 			SrcPort:   f.InitiatorPort,
 			DstPort:   respPort,
 			Protocol:  protoStr,
-			Message:   fmt.Sprintf("Encrypted TLS traffic detected on plain HTTP port %d", respPort),
+			Message:   fmt.Sprintf("Encrypted TLS traffic detected on non-standard port %d", respPort),
 			Details:   f.L7Metadata.Details,
 		})
 		return

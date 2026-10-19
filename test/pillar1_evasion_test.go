@@ -111,17 +111,22 @@ func Test_Pillar1_C2_On_Arbitrary_High_Ports(t *testing.T) {
 		t.Fatalf("Failed to recognize TLS protocol on port 4444, got: %+v", f)
 	}
 
-	// Verify whether PORT_SPOOF_TLS fired for arbitrary non-443/non-8443 port
+	// Verify whether SUSPICIOUS_HIGH_PORT_TLS fired for arbitrary non-443/non-8443 port
 	var foundAlert bool
+	var alertSeverity string
 	for _, a := range snk.alerts {
-		if a.Rule == "PORT_SPOOF_TLS" && a.DstPort == 4444 {
+		if a.Rule == "SUSPICIOUS_HIGH_PORT_TLS" && a.DstPort == 4444 {
 			foundAlert = true
+			alertSeverity = a.Severity
 			break
 		}
 	}
 
 	if !foundAlert {
-		t.Logf("LIMITATION DISCOVERED: TLS on high port 4444 was recognized as TLS, but PORT_SPOOF_TLS rule only matches ports 80/8080.")
+		t.Fatalf("expected SUSPICIOUS_HIGH_PORT_TLS alert for TLS on high port 4444")
+	}
+	if alertSeverity != "HIGH" {
+		t.Errorf("expected severity HIGH, got %s", alertSeverity)
 	}
 }
 
