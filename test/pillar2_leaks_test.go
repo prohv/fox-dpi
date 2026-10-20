@@ -42,7 +42,7 @@ func Test_Pillar2_HTTP_Missing_And_Multiple_Host(t *testing.T) {
 	if f2.L7Metadata.Host != "legitimate.corp" {
 		t.Errorf("expected first Host 'legitimate.corp' to be preserved, got: %s", f2.L7Metadata.Host)
 	}
-	if dupHost := f2.L7Metadata.Details["duplicate_host"]; dupHost != "attacker-controlled.net" {
+	if dupHost := f2.L7Metadata.Detail("duplicate_host"); dupHost != "attacker-controlled.net" {
 		t.Errorf("expected Details['duplicate_host'] to be 'attacker-controlled.net', got: %s", dupHost)
 	}
 
@@ -191,7 +191,7 @@ func Test_Pillar2_HTTP_Pipelining(t *testing.T) {
 	f, _ := eng.ProcessFrame(pkt, time.Now())
 
 	if f != nil {
-		t.Logf("OBSERVATION: Pipelined HTTP requests in single segment parsed Host: %s, Path: %s", f.L7Metadata.Host, f.L7Metadata.Details["path"])
+		t.Logf("OBSERVATION: Pipelined HTTP requests in single segment parsed Host: %s, Path: %s", f.L7Metadata.Host, f.L7Metadata.Detail("path"))
 	}
 }
 

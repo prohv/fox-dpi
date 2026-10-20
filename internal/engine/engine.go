@@ -134,7 +134,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 	}
 
 	// Rule 0: Protocol Padding Evasion (Junk noise prepended before L7 payload)
-	if padOffset, ok := f.L7Metadata.Details["padding_offset"]; ok && padOffset != "0" {
+	if f.L7Metadata.PaddingOffset > 0 {
 		f.AlertEmitted = true
 		e.sink.EmitAlert(sink.AlertEvent{
 			Timestamp: f.LastSeen,
@@ -145,8 +145,8 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 			SrcPort:   f.InitiatorPort,
 			DstPort:   respPort,
 			Protocol:  protoStr,
-			Message:   fmt.Sprintf("Protocol padding detected: %s junk bytes prepended before %s payload", padOffset, f.L7Metadata.Protocol),
-			Details:   f.L7Metadata.Details,
+			Message:   fmt.Sprintf("Protocol padding detected: %d junk bytes prepended before %s payload", f.L7Metadata.PaddingOffset, f.L7Metadata.Protocol),
+			Details:   f.L7Metadata.DetailsMap(),
 		})
 		return
 	}
@@ -165,12 +165,12 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 				DstPort:   respPort,
 				Protocol:  protoStr,
 				Message:   "Cleartext HTTP traffic detected on HTTPS port 443",
-				Details:   f.L7Metadata.Details,
+				Details:   f.L7Metadata.DetailsMap(),
 			})
 			return
 		}
 
-		if dupHost, hasDup := f.L7Metadata.Details["duplicate_host"]; hasDup && dupHost != "" {
+		if dupHost := f.L7Metadata.DuplicateHost; dupHost != "" {
 			f.AlertEmitted = true
 			e.sink.EmitAlert(sink.AlertEvent{
 				Timestamp: f.LastSeen,
@@ -182,7 +182,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 				DstPort:   respPort,
 				Protocol:  protoStr,
 				Message:   fmt.Sprintf("HTTP request smuggling detected: duplicate Host header (%s vs %s)", f.L7Metadata.Host, dupHost),
-				Details:   f.L7Metadata.Details,
+				Details:   f.L7Metadata.DetailsMap(),
 			})
 			return
 		}
@@ -207,7 +207,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 				DstPort:   respPort,
 				Protocol:  protoStr,
 				Message:   fmt.Sprintf("Direct-IP HTTPS connection to %s (omitted SNI extension)", respIP),
-				Details:   f.L7Metadata.Details,
+				Details:   f.L7Metadata.DetailsMap(),
 			})
 			return
 		}
@@ -224,7 +224,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 				DstPort:   respPort,
 				Protocol:  protoStr,
 				Message:   fmt.Sprintf("Encrypted TLS traffic detected on plain HTTP port %d", respPort),
-				Details:   f.L7Metadata.Details,
+				Details:   f.L7Metadata.DetailsMap(),
 			})
 			return
 		}
@@ -240,7 +240,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 			DstPort:   respPort,
 			Protocol:  protoStr,
 			Message:   fmt.Sprintf("Encrypted TLS traffic detected on non-standard port %d", respPort),
-			Details:   f.L7Metadata.Details,
+			Details:   f.L7Metadata.DetailsMap(),
 		})
 		return
 	}
@@ -268,7 +268,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 					DstPort:   respPort,
 					Protocol:  protoStr,
 					Message:   fmt.Sprintf("DNS tunneling exfiltration detected in subdomain: entropy %.2f bits/byte (length %d)", entropy, len(sublabel)),
-					Details:   f.L7Metadata.Details,
+					Details:   f.L7Metadata.DetailsMap(),
 				})
 				return
 			}
@@ -288,7 +288,7 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 			DstPort:   respPort,
 			Protocol:  protoStr,
 			Message:   fmt.Sprintf("DNS traffic detected on non-standard port %d", respPort),
-			Details:   f.L7Metadata.Details,
+			Details:   f.L7Metadata.DetailsMap(),
 		})
 		return
 	}
@@ -324,7 +324,7 @@ func (e *Engine) emitFlowEvent(f *flow.Flow) {
 		Bytes:       f.ClientBytes + f.ServerBytes,
 		DurationMs:  durMs,
 		HandshakeMs: f.HandshakeRTT.Milliseconds(),
-		Details:     f.L7Metadata.Details,
+		Details:     f.L7Metadata.DetailsMap(),
 	}
 	e.sink.EmitFlow(event)
 }

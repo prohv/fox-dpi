@@ -124,7 +124,7 @@ func Test_OWASP_A02_Cryptographic_Failures_Plaintext_Secret_Leak(t *testing.T) {
 		}
 
 		if !hasSecretAlert {
-			t.Logf("LIMITATION DISCOVERED (OWASP A02:2021 Plaintext Secrets): %s extracted path %q over cleartext HTTP without flagging credential exposure.", tt.name, f.L7Metadata.Details["path"])
+			t.Logf("LIMITATION DISCOVERED (OWASP A02:2021 Plaintext Secrets): %s extracted path %q over cleartext HTTP without flagging credential exposure.", tt.name, f.L7Metadata.Detail("path"))
 		}
 	}
 }
@@ -158,8 +158,8 @@ func Test_OWASP_A05_Security_Misconfiguration_Recon_Probing(t *testing.T) {
 			t.Fatalf("expected flow for %s", path)
 		}
 
-		if f.L7Metadata.Details["path"] != path {
-			t.Errorf("expected path %s, got %s", path, f.L7Metadata.Details["path"])
+		if f.L7Metadata.Detail("path") != path {
+			t.Errorf("expected path %s, got %s", path, f.L7Metadata.Detail("path"))
 		}
 
 		// Limitation check: verify if recon probing is alerted
@@ -260,8 +260,8 @@ func Test_OWASP_A03_Injection_Path_Traversal(t *testing.T) {
 		if f.L7Metadata.Protocol != "HTTP" {
 			t.Errorf("expected protocol HTTP, got %s", f.L7Metadata.Protocol)
 		}
-		if f.L7Metadata.Details["path"] != payload {
-			t.Errorf("expected exact path match, got %s", f.L7Metadata.Details["path"])
+		if f.L7Metadata.Detail("path") != payload {
+			t.Errorf("expected exact path match, got %s", f.L7Metadata.Detail("path"))
 		}
 	}
 }
