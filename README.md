@@ -81,17 +81,17 @@ Fox DPI is a lightweight, line-rate passive Deep Packet Inspection (DPI) engine 
 
 All microbenchmarks and end-to-end tests run with **zero heap allocations on hot paths** on an Intel Core i7-13620H:
 
-| Engine Component | Latency | Memory / Allocs | Throughput |
-| :--- | :--- | :--- | :--- |
-| **TLS Dissector** | **51.8 ns/op** | **0 B / 0 allocs** | ~19.3M ops/sec |
-| **DNS Dissector** | **62.4 ns/op** | **0 B / 0 allocs** | ~16.0M ops/sec |
-| **HTTP Dissector** | **235.1 ns/op** | **0 B / 0 allocs** | ~4.25M ops/sec |
-| **Protocol Fast Rejection Gate** | **24.7 ns/op** | **0 B / 0 allocs** | ~40.5M ops/sec |
-| **Shannon Entropy LUT (Port 53)** | **175.7 ns/op** | **0 B / 0 allocs** | ~5.69M ops/sec |
-| **FlowTable Parallel Lookups** | **38.7 ns/op** | **0 B / 0 allocs** | **>25.8M flows/sec** |
-| **PCAP End-to-End Engine Replay** | **272.3 ns/op** | **0 allocs/op** | **~3.67M packets/sec** |
+| Engine Component | Latency | Throughput |
+| :--- | :--- | :--- |
+| **TLS Dissector** | **51.8 ns/op** | ~19.3M ops/sec |
+| **DNS Dissector** | **62.4 ns/op** | ~16.0M ops/sec |
+| **HTTP Dissector** | **235.1 ns/op** | ~4.25M ops/sec |
+| **Protocol Fast Rejection Gate** | **24.7 ns/op** | ~40.5M ops/sec |
+| **Shannon Entropy LUT (Port 53)** | **175.7 ns/op** | ~5.69M ops/sec |
+| **FlowTable Parallel Lookups** | **38.7 ns/op** | **>25.8M flows/sec** |
+| **PCAP End-to-End Engine Replay** | **272.3 ns/op** | **~3.67M packets/sec** |
 
-*Verified 100% data-race free with `go test -race ./...`.*
+*All components operate with **zero heap allocations (0 B/op, 0 allocs/op)** on hot paths and are 100% data-race free (`go test -race ./...`).*
 
 ---
 
