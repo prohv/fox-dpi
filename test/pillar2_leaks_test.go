@@ -16,7 +16,8 @@ import (
 
 // Test_Pillar2_HTTP_Missing_And_Multiple_Host tests HTTP header scanning with multiple or absent Host headers.
 func Test_Pillar2_HTTP_Missing_And_Multiple_Host(t *testing.T) {
-	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig())
+	snk := &captureSink{}
+	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig(), snk)
 
 	clientIP := net.ParseIP("10.0.0.1")
 	serverIP := net.ParseIP("10.0.0.2")
@@ -35,8 +36,29 @@ func Test_Pillar2_HTTP_Missing_And_Multiple_Host(t *testing.T) {
 	p2 := serializeTCPWithSeq(clientIP, serverIP, 51001, 80, 2000, true, false, httpDupHost)
 	f2, _ := eng.ProcessFrame(p2, time.Now())
 
-	if f2 != nil {
-		t.Logf("OBSERVATION: Duplicate Host headers resolved to: Host=%s", f2.L7Metadata.Host)
+	if f2 == nil {
+		t.Fatalf("expected flow f2 to be processed")
+	}
+	if f2.L7Metadata.Host != "legitimate.corp" {
+		t.Errorf("expected first Host 'legitimate.corp' to be preserved, got: %s", f2.L7Metadata.Host)
+	}
+	if dupHost := f2.L7Metadata.Details["duplicate_host"]; dupHost != "attacker-controlled.net" {
+		t.Errorf("expected Details['duplicate_host'] to be 'attacker-controlled.net', got: %s", dupHost)
+	}
+
+	// Verify HTTP_DUPLICATE_HOST alert emitted
+	var foundAlert bool
+	for _, a := range snk.alerts {
+		if a.Rule == "HTTP_DUPLICATE_HOST" {
+			foundAlert = true
+			if a.Severity != "WARN" {
+				t.Errorf("expected severity WARN, got %s", a.Severity)
+			}
+			break
+		}
+	}
+	if !foundAlert {
+		t.Fatalf("expected HTTP_DUPLICATE_HOST alert to fire")
 	}
 }
 

@@ -90,7 +90,7 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	}
 
 	headerSection := payload[:headerEnd]
-	var host, userAgent, path string
+	var host, userAgent, path, duplicateHost string
 
 	// Parse request target from line 0
 	firstLineEnd := bytes.IndexByte(headerSection, '\n')
@@ -140,17 +140,25 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 
 		// Bitwise case-insensitive header matching
 		if len(key) == 4 && (binary.LittleEndian.Uint32(key)&0xDFDFDFDF) == magicHost {
+			var parsedHost string
 			if len(val) > 0 && val[0] == '[' {
 				// RFC 3986 bracketed IPv6 address literal
 				if closeIdx := bytes.IndexByte(val, ']'); closeIdx != -1 {
-					host = InternString(val[:closeIdx+1])
+					parsedHost = InternString(val[:closeIdx+1])
 				} else {
-					host = InternString(val)
+					parsedHost = InternString(val)
 				}
 			} else if h, _, found := bytes.Cut(val, []byte(":")); found {
-				host = InternString(h)
+				parsedHost = InternString(h)
 			} else {
-				host = InternString(val)
+				parsedHost = InternString(val)
+			}
+
+			if host == "" {
+				host = parsedHost
+			} else if duplicateHost == "" {
+				// RFC 7230 Section 5.4 violation: duplicate Host header detected
+				duplicateHost = parsedHost
 			}
 		} else if len(key) == 10 && (binary.LittleEndian.Uint32(key[:4])&0xDFDFDFDF) == magicUser && key[4] == '-' {
 			userAgent = InternString(val)
@@ -161,13 +169,18 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		host = "unknown"
 	}
 
+	details := map[string]string{
+		"method":     matchedMethod,
+		"path":       path,
+		"user_agent": userAgent,
+	}
+	if duplicateHost != "" {
+		details["duplicate_host"] = duplicateHost
+	}
+
 	return VerdictMatched, Metadata{
 		Protocol: "HTTP",
 		Host:     host,
-		Details: map[string]string{
-			"method":     matchedMethod,
-			"path":       path,
-			"user_agent": userAgent,
-		},
+		Details:  details,
 	}, nil
 }

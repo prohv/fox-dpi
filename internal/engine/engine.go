@@ -151,22 +151,41 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 		return
 	}
 
-	// Rule 1: HTTP on port 443 (Cleartext on TLS port)
-	if f.L7Metadata.Protocol == "HTTP" && respPort == 443 {
-		f.AlertEmitted = true
-		e.sink.EmitAlert(sink.AlertEvent{
-			Timestamp: f.LastSeen,
-			Rule:      "PORT_SPOOF_HTTP",
-			Severity:  "HIGH",
-			SrcIP:     f.InitiatorIP.String(),
-			DstIP:     respIP.String(),
-			SrcPort:   f.InitiatorPort,
-			DstPort:   respPort,
-			Protocol:  protoStr,
-			Message:   "Cleartext HTTP traffic detected on HTTPS port 443",
-			Details:   f.L7Metadata.Details,
-		})
-		return
+	// Rule 1: HTTP Checks
+	if f.L7Metadata.Protocol == "HTTP" {
+		if respPort == 443 {
+			f.AlertEmitted = true
+			e.sink.EmitAlert(sink.AlertEvent{
+				Timestamp: f.LastSeen,
+				Rule:      "PORT_SPOOF_HTTP",
+				Severity:  "HIGH",
+				SrcIP:     f.InitiatorIP.String(),
+				DstIP:     respIP.String(),
+				SrcPort:   f.InitiatorPort,
+				DstPort:   respPort,
+				Protocol:  protoStr,
+				Message:   "Cleartext HTTP traffic detected on HTTPS port 443",
+				Details:   f.L7Metadata.Details,
+			})
+			return
+		}
+
+		if dupHost, hasDup := f.L7Metadata.Details["duplicate_host"]; hasDup && dupHost != "" {
+			f.AlertEmitted = true
+			e.sink.EmitAlert(sink.AlertEvent{
+				Timestamp: f.LastSeen,
+				Rule:      "HTTP_DUPLICATE_HOST",
+				Severity:  "WARN",
+				SrcIP:     f.InitiatorIP.String(),
+				DstIP:     respIP.String(),
+				SrcPort:   f.InitiatorPort,
+				DstPort:   respPort,
+				Protocol:  protoStr,
+				Message:   fmt.Sprintf("HTTP request smuggling detected: duplicate Host header (%s vs %s)", f.L7Metadata.Host, dupHost),
+				Details:   f.L7Metadata.Details,
+			})
+			return
+		}
 	}
 
 	// Rule 2: TLS Port Checks
