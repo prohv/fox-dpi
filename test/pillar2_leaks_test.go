@@ -184,12 +184,11 @@ func Test_Pillar2_IPv6_Bracketed_Host(t *testing.T) {
 	pkt := serializeTCPWithSeq(clientIP, serverIP, 52002, 80, 1000, true, false, httpIPv6)
 	f, _ := eng.ProcessFrame(pkt, time.Now())
 
-	if f != nil {
-		if f.L7Metadata.Host != "[2001:db8::1]" {
-			t.Logf("LIMITATION DISCOVERED: IPv6 Host '[2001:db8::1]:8080' was cut at first colon to %q instead of '[2001:db8::1]'.", f.L7Metadata.Host)
-		} else {
-			t.Logf("PASS: IPv6 Host correctly parsed as %s", f.L7Metadata.Host)
-		}
+	if f == nil {
+		t.Fatalf("expected flow to be processed")
+	}
+	if f.L7Metadata.Host != "[2001:db8::1]" {
+		t.Fatalf("expected Host '[2001:db8::1]', got: %q", f.L7Metadata.Host)
 	}
 }
 

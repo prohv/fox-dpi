@@ -140,7 +140,14 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 
 		// Bitwise case-insensitive header matching
 		if len(key) == 4 && (binary.LittleEndian.Uint32(key)&0xDFDFDFDF) == magicHost {
-			if h, _, found := bytes.Cut(val, []byte(":")); found {
+			if len(val) > 0 && val[0] == '[' {
+				// RFC 3986 bracketed IPv6 address literal
+				if closeIdx := bytes.IndexByte(val, ']'); closeIdx != -1 {
+					host = InternString(val[:closeIdx+1])
+				} else {
+					host = InternString(val)
+				}
+			} else if h, _, found := bytes.Cut(val, []byte(":")); found {
 				host = InternString(h)
 			} else {
 				host = InternString(val)
