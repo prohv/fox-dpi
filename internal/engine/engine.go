@@ -306,6 +306,11 @@ func (e *Engine) emitFlowEvent(f *flow.Flow) {
 		protoStr = "UDP"
 	}
 
+	durMs := f.LastSeen.Sub(f.FirstSeen).Milliseconds()
+	if durMs < 0 {
+		durMs = 0
+	}
+
 	event := sink.FlowEvent{
 		Timestamp:   f.LastSeen,
 		SrcIP:       f.InitiatorIP.String(),
@@ -317,7 +322,7 @@ func (e *Engine) emitFlowEvent(f *flow.Flow) {
 		Host:        f.L7Metadata.Host,
 		Packets:     f.ClientPackets + f.ServerPackets,
 		Bytes:       f.ClientBytes + f.ServerBytes,
-		DurationMs:  f.LastSeen.Sub(f.FirstSeen).Milliseconds(),
+		DurationMs:  durMs,
 		HandshakeMs: f.HandshakeRTT.Milliseconds(),
 		Details:     f.L7Metadata.Details,
 	}

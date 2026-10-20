@@ -66,7 +66,13 @@ func NewFlow(key FlowKey, srcIP netip.Addr, srcPort uint16, length int, tcpFlags
 
 // Update records directional packet volume, tracks TCP handshake latency, and detects teardown flags.
 func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uint8, t time.Time) {
-	f.LastSeen = t
+	// Monotonic bounds envelope: guarantees FirstSeen <= LastSeen under packet capture clock skew
+	if t.Before(f.FirstSeen) {
+		f.FirstSeen = t
+	}
+	if t.After(f.LastSeen) {
+		f.LastSeen = t
+	}
 
 	isClient := (srcIP == f.InitiatorIP && srcPort == f.InitiatorPort)
 	if isClient {

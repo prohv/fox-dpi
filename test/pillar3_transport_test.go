@@ -51,12 +51,15 @@ func Test_Pillar3_Negative_Timestamp_Clock_Skew(t *testing.T) {
 	p2 := serializeFrame(serverIP, clientIP, 80, 46000, true, true, true, false, false, nil)
 	f, _ := eng.ProcessFrame(p2, now.Add(-10*time.Second))
 
-	if f != nil {
-		if f.HandshakeRTT < 0 {
-			t.Errorf("LIMITATION DISCOVERED: Clock skew produced negative HandshakeRTT: %v", f.HandshakeRTT)
-		} else {
-			t.Logf("PASS: Clock skew handled safely, HandshakeRTT non-negative: %v", f.HandshakeRTT)
-		}
+	if f == nil {
+		t.Fatalf("expected flow to exist")
+	}
+	if f.HandshakeRTT < 0 {
+		t.Fatalf("clock skew produced negative HandshakeRTT: %v", f.HandshakeRTT)
+	}
+	dur := f.LastSeen.Sub(f.FirstSeen)
+	if dur < 0 {
+		t.Fatalf("clock skew produced negative duration: %v (FirstSeen=%v, LastSeen=%v)", dur, f.FirstSeen, f.LastSeen)
 	}
 }
 
@@ -177,10 +180,8 @@ func Test_Pillar3_Seq_32Bit_Wraparound(t *testing.T) {
 	_, _ = eng.ProcessFrame(p1, time.Now())
 	f, _ := eng.ProcessFrame(p2, time.Now().Add(5*time.Millisecond))
 
-	if f != nil && f.L7Metadata.Protocol == "HTTP" {
-		t.Logf("PASS: TCP sequence number wraparound handled correctly by reassembler.")
-	} else {
-		t.Logf("LIMITATION DISCOVERED: Sequence rollover past 2^32-1 did not stitch contiguous HTTP stream.")
+	if f == nil || f.L7Metadata.Protocol != "HTTP" {
+		t.Fatalf("expected HTTP protocol across sequence rollover, got: %+v", f)
 	}
 }
 
@@ -197,12 +198,10 @@ func Test_Pillar3_Immediate_RST_Handling(t *testing.T) {
 	// Immediate RST
 	p2 := serializeFrame(serverIP, clientIP, 80, 53002, true, false, false, false, true, nil)
 
-	f1, _ := eng.ProcessFrame(p1, now)
+	_, _ = eng.ProcessFrame(p1, now)
 	f2, _ := eng.ProcessFrame(p2, now.Add(2*time.Millisecond))
 
-	if f2 != nil && f2.Closing {
-		t.Logf("PASS: Immediate RST immediately marked flow Closing=true.")
-	} else {
-		t.Errorf("expected flow marked closing after RST, got Closing=%v", f1.Closing)
+	if f2 == nil || !f2.Closing {
+		t.Fatalf("expected flow marked closing after RST, got: %+v", f2)
 	}
 }
