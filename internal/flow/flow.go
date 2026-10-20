@@ -83,11 +83,11 @@ func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uin
 		f.ServerBytes += uint64(length)
 	}
 
-	// TCP Handshake RTT tracking: SYN from client, SYN-ACK from server
-	if (tcpFlags & flagSYN) != 0 {
+	// TCP Handshake RTT tracking: SYN from client, SYN-ACK from server (skip once handshake established)
+	if (tcpFlags&flagSYN) != 0 && !f.SynAckSeen {
 		if isClient && (tcpFlags&flagACK) == 0 {
 			f.SynSeen = true
-		} else if !isClient && (tcpFlags&flagACK) != 0 && f.SynSeen && !f.SynAckSeen {
+		} else if !isClient && (tcpFlags&flagACK) != 0 && f.SynSeen {
 			f.SynAckSeen = true
 			if t.After(f.FirstSeen) {
 				f.HandshakeRTT = t.Sub(f.FirstSeen)
@@ -95,8 +95,8 @@ func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uin
 		}
 	}
 
-	// Teardown detection: mark closing on FIN or RST
-	if (tcpFlags&flagFIN) != 0 || (tcpFlags&flagRST) != 0 {
+	// Teardown detection: mark closing on FIN or RST in single bitmask test
+	if (tcpFlags & (flagFIN | flagRST)) != 0 {
 		if !f.Closing {
 			f.Closing = true
 			f.CloseTime = t
