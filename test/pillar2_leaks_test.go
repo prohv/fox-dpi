@@ -42,7 +42,8 @@ func Test_Pillar2_HTTP_Missing_And_Multiple_Host(t *testing.T) {
 
 // Test_Pillar2_TLS_No_SNI_IP_Direct tests TLS ClientHello without any Server Name Indication (direct IP connect).
 func Test_Pillar2_TLS_No_SNI_IP_Direct(t *testing.T) {
-	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig())
+	snk := &captureSink{}
+	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig(), snk)
 
 	clientIP := net.ParseIP("10.0.0.1")
 	serverIP := net.ParseIP("1.1.1.1")
@@ -65,7 +66,27 @@ func Test_Pillar2_TLS_No_SNI_IP_Direct(t *testing.T) {
 	f, _ := eng.ProcessFrame(pkt, time.Now())
 
 	if f == nil || f.L7Metadata.Protocol != "TLS" {
-		t.Logf("LIMITATION DISCOVERED: TLS ClientHello without SNI extension was returned as Unknown protocol (matched: %s).", f.L7Metadata.Protocol)
+		t.Fatalf("expected TLS protocol for direct-IP ClientHello, got: %+v", f)
+	}
+	if f.L7Metadata.Host != "direct-ip" {
+		t.Errorf("expected Host 'direct-ip', got: %s", f.L7Metadata.Host)
+	}
+
+	// Verify DIRECT_IP_HTTPS alert fired
+	var foundAlert bool
+	var alertSeverity string
+	for _, a := range snk.alerts {
+		if a.Rule == "DIRECT_IP_HTTPS" {
+			foundAlert = true
+			alertSeverity = a.Severity
+			break
+		}
+	}
+	if !foundAlert {
+		t.Fatalf("expected DIRECT_IP_HTTPS alert to fire")
+	}
+	if alertSeverity != "WARN" {
+		t.Errorf("expected severity WARN, got %s", alertSeverity)
 	}
 }
 

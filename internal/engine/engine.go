@@ -171,12 +171,28 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 
 	// Rule 2: TLS Port Checks
 	if f.L7Metadata.Protocol == "TLS" {
-		// Fast-path: standard HTTPS port (99% of traffic), exit immediately in 1 cycle
-		if respPort == 443 || respPort == 8443 {
+		// Fast-path: standard HTTPS port with valid SNI (99% of traffic), exit immediately in 1 cycle
+		if (respPort == 443 || respPort == 8443) && f.L7Metadata.Host != "direct-ip" {
 			return
 		}
 
 		f.AlertEmitted = true
+		if f.L7Metadata.Host == "direct-ip" && (respPort == 443 || respPort == 8443) {
+			e.sink.EmitAlert(sink.AlertEvent{
+				Timestamp: f.LastSeen,
+				Rule:      "DIRECT_IP_HTTPS",
+				Severity:  "WARN",
+				SrcIP:     f.InitiatorIP.String(),
+				DstIP:     respIP.String(),
+				SrcPort:   f.InitiatorPort,
+				DstPort:   respPort,
+				Protocol:  protoStr,
+				Message:   fmt.Sprintf("Direct-IP HTTPS connection to %s (omitted SNI extension)", respIP),
+				Details:   f.L7Metadata.Details,
+			})
+			return
+		}
+
 		if respPort == 80 || respPort == 8080 {
 			// Plain HTTP port spoofing
 			e.sink.EmitAlert(sink.AlertEvent{

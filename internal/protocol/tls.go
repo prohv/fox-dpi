@@ -43,6 +43,22 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	clientVerMajor := payload[9]
 	clientVerMinor := payload[10]
 
+	var versionStr string
+	if clientVerMajor == 3 {
+		switch clientVerMinor {
+		case 1:
+			versionStr = "TLS 1.0"
+		case 2:
+			versionStr = "TLS 1.1"
+		case 3:
+			versionStr = "TLS 1.2/1.3"
+		default:
+			versionStr = "TLS"
+		}
+	} else {
+		versionStr = "SSL"
+	}
+
 	// Offset at start of Session ID (byte 43)
 	offset := 43
 	if offset >= len(payload) {
@@ -67,8 +83,15 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	compressionLen := int(payload[offset])
 	offset += 1 + compressionLen
 	if offset+2 > len(payload) {
-		// No extensions present
-		return VerdictUnknown, Metadata{}, nil
+		// Valid TLS ClientHello with no extensions (direct IP or legacy TLS)
+		return VerdictMatched, Metadata{
+			Protocol: "TLS",
+			Host:     "direct-ip",
+			Details: map[string]string{
+				"sni":     "none",
+				"version": versionStr,
+			},
+		}, nil
 	}
 
 	// Parse Extensions TLV
@@ -106,22 +129,6 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 			}
 
 			serverName := InternString(payload[offset+5 : offset+5+nameLen])
-			var versionStr string
-			if clientVerMajor == 3 {
-				switch clientVerMinor {
-				case 1:
-					versionStr = "TLS 1.0"
-				case 2:
-					versionStr = "TLS 1.1"
-				case 3:
-					versionStr = "TLS 1.2/1.3"
-				default:
-					versionStr = "TLS"
-				}
-			} else {
-				versionStr = "SSL"
-			}
-
 			return VerdictMatched, Metadata{
 				Protocol: "TLS",
 				Host:     serverName,
@@ -135,5 +142,13 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		offset += extLen
 	}
 
-	return VerdictUnknown, Metadata{}, nil
+	// Valid TLS ClientHello without SNI extension (direct IP connection)
+	return VerdictMatched, Metadata{
+		Protocol: "TLS",
+		Host:     "direct-ip",
+		Details: map[string]string{
+			"sni":     "none",
+			"version": versionStr,
+		},
+	}, nil
 }
