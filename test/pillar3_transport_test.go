@@ -62,7 +62,8 @@ func Test_Pillar3_Negative_Timestamp_Clock_Skew(t *testing.T) {
 
 // Test_Pillar3_Rapid_Port_Reuse_After_FIN tests connection tracking when a client immediately reuses a port.
 func Test_Pillar3_Rapid_Port_Reuse_After_FIN(t *testing.T) {
-	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig())
+	snk := &captureSink{}
+	eng, _ := engine.NewEngine(layers.LinkTypeEthernet, flow.DefaultEvictionConfig(), snk)
 
 	clientIP := net.ParseIP("10.0.0.1")
 	serverIP := net.ParseIP("10.0.0.2")
@@ -85,9 +86,22 @@ func Test_Pillar3_Rapid_Port_Reuse_After_FIN(t *testing.T) {
 	syn2 := serializeFrame(clientIP, serverIP, clientPort, serverPort, true, true, false, false, false, nil)
 	f2, _ := eng.ProcessFrame(syn2, now.Add(51*time.Millisecond))
 
-	// In current single-entry FlowKey table:
+	if f2 == nil {
+		t.Fatalf("expected f2 to be created")
+	}
 	if f2 == f1 {
-		t.Logf("OBSERVATION: Port reuse on active 5-tuple updates existing closing flow record rather than instantiating a new flow generation.")
+		t.Fatalf("expected brand new Flow instance on rapid port reuse, got identical pointer")
+	}
+	if f2.Closing {
+		t.Errorf("expected new Flow epoch f2 to have Closing=false, got true")
+	}
+	if f2.ClientPackets != 1 {
+		t.Errorf("expected new Flow epoch f2 to have ClientPackets=1, got %d", f2.ClientPackets)
+	}
+
+	// Verify old flow f1 was flushed to sink upon epoch renewal
+	if len(snk.flows) != 1 {
+		t.Errorf("expected 1 flushed flow in sink, got %d", len(snk.flows))
 	}
 }
 

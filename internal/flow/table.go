@@ -36,6 +36,12 @@ func (t *FlowTable) shardIndex(key FlowKey) int {
 
 // GetOrCreate finds the existing flow or initializes a new record with the packet's endpoints.
 func (t *FlowTable) GetOrCreate(key FlowKey, srcIP netip.Addr, srcPort uint16, length int, tcpFlags uint8, ts time.Time) *Flow {
+	return t.GetOrCreateWithEvict(key, srcIP, srcPort, length, tcpFlags, ts, nil)
+}
+
+// GetOrCreateWithEvict finds the existing flow or initializes a new record.
+// If an existing flow is closing and a new SYN arrives (rapid port reuse), the old flow is flushed via onEvict and a fresh flow epoch begins.
+func (t *FlowTable) GetOrCreateWithEvict(key FlowKey, srcIP netip.Addr, srcPort uint16, length int, tcpFlags uint8, ts time.Time, onEvict func(*Flow)) *Flow {
 	idx := t.shardIndex(key)
 	shard := &t.shards[idx]
 
@@ -44,6 +50,21 @@ func (t *FlowTable) GetOrCreate(key FlowKey, srcIP netip.Addr, srcPort uint16, l
 
 	flow, exists := shard.flows[key]
 	if !exists {
+		flow = NewFlow(key, srcIP, srcPort, length, tcpFlags, ts)
+		shard.flows[key] = flow
+		return flow
+	}
+
+	// RFC 793/9293 Rapid port reuse epoch detection:
+	// If the existing connection was closing/closed and a new SYN arrives, start a new flow incarnation.
+	if flow.Closing && (tcpFlags&flagSYN) != 0 && (tcpFlags&flagACK) == 0 {
+		if onEvict != nil {
+			onEvict(flow)
+		}
+		if flow.Reassembler != nil {
+			reassembly.PutReassembler(flow.Reassembler)
+			flow.Reassembler = nil
+		}
 		flow = NewFlow(key, srcIP, srcPort, length, tcpFlags, ts)
 		shard.flows[key] = flow
 		return flow

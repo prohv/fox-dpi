@@ -88,7 +88,7 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 	}
 
 	key := flow.NewFlowKey(pkt.SrcIP, pkt.SrcPort, pkt.DstIP, pkt.DstPort, pkt.Proto)
-	f := e.table.GetOrCreate(key, pkt.SrcIP, pkt.SrcPort, pkt.Length, pkt.TCPFlags, ts)
+	f := e.table.GetOrCreateWithEvict(key, pkt.SrcIP, pkt.SrcPort, pkt.Length, pkt.TCPFlags, ts, e.emitFlowEvent)
 
 	// L7 Inspection Pipeline
 	if len(pkt.Payload) > 0 && !f.L7Bypass {

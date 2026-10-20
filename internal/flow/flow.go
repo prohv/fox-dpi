@@ -16,6 +16,14 @@ const (
 	DirectionServerToClient
 )
 
+// TCP flag bitmasks for stateful connection tracking
+const (
+	flagSYN uint8 = 1 << 0
+	flagACK uint8 = 1 << 1
+	flagFIN uint8 = 1 << 2
+	flagRST uint8 = 1 << 3
+)
+
 // Flow maintains connection metrics and lifecycle state for a bidirectional conversation.
 type Flow struct {
 	Key           FlowKey
@@ -70,11 +78,6 @@ func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uin
 	}
 
 	// TCP Handshake RTT tracking: SYN from client, SYN-ACK from server
-	const flagSYN = 1 << 0
-	const flagACK = 1 << 1
-	const flagFIN = 1 << 2
-	const flagRST = 1 << 3
-
 	if (tcpFlags & flagSYN) != 0 {
 		if isClient && (tcpFlags&flagACK) == 0 {
 			f.SynSeen = true
