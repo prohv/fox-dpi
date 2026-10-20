@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"strconv"
 )
 
 // Dispatcher coordinates protocol parsers using fast magic-byte prefix matching.
@@ -58,10 +57,7 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 			if idx := bytes.Index(window, []byte{0x16, 0x03}); idx != -1 {
 				v, m, err := d.tls.Inspect(payload[idx:])
 				if v == VerdictMatched {
-					if m.Details == nil {
-						m.Details = make(map[string]string)
-					}
-					m.Details["padding_offset"] = strconv.Itoa(idx)
+					m.PaddingOffset = idx
 					return v, m, err
 				} else if v == VerdictNeedMoreData {
 					return v, m, err
@@ -73,10 +69,7 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 				if isHTTPPrefix(payload[i:]) {
 					v, m, err := d.http.Inspect(payload[i:])
 					if v == VerdictMatched {
-						if m.Details == nil {
-							m.Details = make(map[string]string)
-						}
-						m.Details["padding_offset"] = strconv.Itoa(i)
+						m.PaddingOffset = i
 						return v, m, err
 					} else if v == VerdictNeedMoreData {
 						return v, m, err

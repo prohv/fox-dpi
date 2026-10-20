@@ -87,10 +87,8 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		return VerdictMatched, Metadata{
 			Protocol: "TLS",
 			Host:     "direct-ip",
-			Details: map[string]string{
-				"sni":     "none",
-				"version": versionStr,
-			},
+			SNI:      "none",
+			Version:  versionStr,
 		}, nil
 	}
 
@@ -132,10 +130,8 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 			return VerdictMatched, Metadata{
 				Protocol: "TLS",
 				Host:     serverName,
-				Details: map[string]string{
-					"sni":     serverName,
-					"version": versionStr,
-				},
+				SNI:      serverName,
+				Version:  versionStr,
 			}, nil
 		}
 
@@ -146,9 +142,7 @@ func (d *TLSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	return VerdictMatched, Metadata{
 		Protocol: "TLS",
 		Host:     "direct-ip",
-		Details: map[string]string{
-			"sni":     "none",
-			"version": versionStr,
-		},
+		SNI:      "none",
+		Version:  versionStr,
 	}, nil
 }

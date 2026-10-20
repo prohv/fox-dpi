@@ -18,11 +18,11 @@ func Test_HTTPDissector_ValidGet(t *testing.T) {
 	if meta.Host != "api.service.internal" {
 		t.Fatalf("expected host api.service.internal, got %s", meta.Host)
 	}
-	if meta.Details["method"] != "GET" || meta.Details["path"] != "/api/v1/users" {
-		t.Fatalf("unexpected details: %+v", meta.Details)
+	if meta.Detail("method") != "GET" || meta.Detail("path") != "/api/v1/users" {
+		t.Fatalf("unexpected details: method=%s, path=%s", meta.Method, meta.Path)
 	}
-	if meta.Details["user_agent"] != "Go-http-client/1.1" {
-		t.Fatalf("unexpected user-agent: %s", meta.Details["user_agent"])
+	if meta.Detail("user_agent") != "Go-http-client/1.1" {
+		t.Fatalf("unexpected user-agent: %s", meta.UserAgent)
 	}
 }
 

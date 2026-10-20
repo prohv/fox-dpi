@@ -44,8 +44,8 @@ func Test_DNSDissector_ValidQuery(t *testing.T) {
 	if meta.Host != "www.google.com" {
 		t.Fatalf("expected host www.google.com, got %s", meta.Host)
 	}
-	if meta.Details["qtype"] != "A" || meta.Details["role"] != "query" {
-		t.Fatalf("unexpected details: %+v", meta.Details)
+	if meta.Detail("qtype") != "A" || meta.Detail("role") != "query" {
+		t.Fatalf("unexpected details: qtype=%s, role=%s", meta.Detail("qtype"), meta.Detail("role"))
 	}
 }
 

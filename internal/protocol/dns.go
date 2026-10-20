@@ -103,6 +103,8 @@ func (d *DNSDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	return VerdictMatched, Metadata{
 		Protocol: "DNS",
 		Host:     domain,
+		QType:    qTypeStr,
+		Role:     role,
 		Details:  getDNSDetails(role, qTypeStr),
 	}, nil
 }

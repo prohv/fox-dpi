@@ -105,9 +105,9 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 	if sp1 := bytes.IndexByte(firstLine, ' '); sp1 != -1 {
 		rest := firstLine[sp1+1:]
 		if sp2 := bytes.IndexByte(rest, ' '); sp2 != -1 {
-			path = string(rest[:sp2])
+			path = InternString(rest[:sp2])
 		} else {
-			path = string(rest)
+			path = InternString(rest)
 		}
 	}
 
@@ -148,8 +148,8 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 				} else {
 					parsedHost = InternString(val)
 				}
-			} else if h, _, found := bytes.Cut(val, []byte(":")); found {
-				parsedHost = InternString(h)
+			} else if colon := bytes.IndexByte(val, ':'); colon != -1 {
+				parsedHost = InternString(val[:colon])
 			} else {
 				parsedHost = InternString(val)
 			}
@@ -169,18 +169,12 @@ func (d *HTTPDissector) Inspect(payload []byte) (Verdict, Metadata, error) {
 		host = "unknown"
 	}
 
-	details := map[string]string{
-		"method":     matchedMethod,
-		"path":       path,
-		"user_agent": userAgent,
-	}
-	if duplicateHost != "" {
-		details["duplicate_host"] = duplicateHost
-	}
-
 	return VerdictMatched, Metadata{
-		Protocol: "HTTP",
-		Host:     host,
-		Details:  details,
+		Protocol:      "HTTP",
+		Host:          host,
+		Method:        matchedMethod,
+		Path:          path,
+		UserAgent:     userAgent,
+		DuplicateHost: duplicateHost,
 	}, nil
 }

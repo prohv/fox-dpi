@@ -62,8 +62,8 @@ func Test_TLSDissector_ValidSNI(t *testing.T) {
 	if meta.Host != "api.github.com" {
 		t.Fatalf("expected host api.github.com, got %s", meta.Host)
 	}
-	if meta.Details["sni"] != "api.github.com" {
-		t.Fatalf("unexpected details: %+v", meta.Details)
+	if meta.Detail("sni") != "api.github.com" {
+		t.Fatalf("unexpected details: sni=%s", meta.SNI)
 	}
 }
 
