@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -209,7 +210,37 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 		return
 	}
 
-	// Rule 3: DNS on non-standard port (not 53 and not 853)
+	// Rule 3: DNS Tunneling Exfiltration via High-Entropy QNAME (MITRE T1071.004)
+	if f.L7Metadata.Protocol == "DNS" && f.L7Metadata.Host != "" {
+		host := f.L7Metadata.Host
+		firstDot := strings.IndexByte(host, '.')
+		sublabel := host
+		if firstDot != -1 {
+			sublabel = host[:firstDot]
+		}
+		// 2ns Fast-Gate: Normal subdomains (www, api, auth) are <= 45 chars
+		if len(sublabel) > 45 {
+			entropy := protocol.FastShannonEntropy(sublabel)
+			if entropy > 4.2 {
+				f.AlertEmitted = true
+				e.sink.EmitAlert(sink.AlertEvent{
+					Timestamp: f.LastSeen,
+					Rule:      "DNS_TUNNELING_EXFILTRATION",
+					Severity:  "HIGH",
+					SrcIP:     f.InitiatorIP.String(),
+					DstIP:     respIP.String(),
+					SrcPort:   f.InitiatorPort,
+					DstPort:   respPort,
+					Protocol:  protoStr,
+					Message:   fmt.Sprintf("DNS tunneling exfiltration detected in subdomain: entropy %.2f bits/byte (length %d)", entropy, len(sublabel)),
+					Details:   f.L7Metadata.Details,
+				})
+				return
+			}
+		}
+	}
+
+	// Rule 4: DNS on non-standard port (not 53 and not 853)
 	if f.L7Metadata.Protocol == "DNS" && respPort != 53 && respPort != 853 {
 		f.AlertEmitted = true
 		e.sink.EmitAlert(sink.AlertEvent{

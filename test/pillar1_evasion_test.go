@@ -355,14 +355,19 @@ func Test_Pillar1_DNS_Tunneling_Exfiltration_Port53(t *testing.T) {
 
 	// Check if any DNS tunneling alert fired
 	var foundTunnelAlert bool
+	var alertSeverity string
 	for _, a := range snk.alerts {
-		if a.Rule == "DNS_TUNNELING" {
+		if a.Rule == "DNS_TUNNELING_EXFILTRATION" {
 			foundTunnelAlert = true
+			alertSeverity = a.Severity
 			break
 		}
 	}
 
 	if !foundTunnelAlert {
-		t.Logf("LIMITATION DISCOVERED: 58-character high-entropy DNS tunnel on port 53 extracted QNAME (%s), but no DNS_TUNNELING alert fired.", f.L7Metadata.Host)
+		t.Fatalf("expected DNS_TUNNELING_EXFILTRATION alert for high-entropy DNS tunnel on port 53")
+	}
+	if alertSeverity != "HIGH" {
+		t.Errorf("expected severity HIGH, got %s", alertSeverity)
 	}
 }
