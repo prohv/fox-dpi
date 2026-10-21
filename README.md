@@ -112,30 +112,80 @@ go build -o foxdpi.exe ./cmd/foxdpi
 
 ## CLI Usage
 
-### Analyze Offline PCAP
+### 1. Live Packet Capture (Out-of-the-Box)
+
+Zero dependencies required (no Npcap or Wireshark needed). Fox DPI binds natively to host OS kernel raw packet taps:
+
 ```bash
-./foxdpi -f /path/to/traffic.pcap -o ./output -rotate-mb 10
+# Auto-detect active Wi-Fi or primary Ethernet and capture live
+foxdpi -i capture
+
+# Capture on a specific network adapter (e.g., Wi-Fi, eth0, en0)
+foxdpi -i Wi-Fi
+
+# List all available network adapters with IP and MAC info
+foxdpi -list
 ```
 
-### Options & Flags
+> [!NOTE]
+> **OS Privilege Requirements for Live Capture**:
+> - **Windows**: Run terminal as **Administrator** (Winsock2 `SIO_RCVALL` raw socket).
+> - **Linux**: Run with `sudo` or file capability: `sudo setcap cap_net_raw=eip ./foxdpi` (`AF_PACKET`).
+> - **macOS**: Run with `sudo ./foxdpi` (Berkeley Packet Filter `/dev/bpf*`).
+
+### 2. Analyze Offline PCAP File
+```bash
+foxdpi -f /path/to/traffic.pcap -o ./output -rotate-mb 10
+```
+
+### CLI Command Reference
 ```
 Fox DPI - Passive Layer 7 Deep Packet Inspection Engine
 
 Usage:
-  foxdpi -f <path.pcap> [-o <out_dir>] [-rotate-mb <mb>]
-  foxdpi -list
+  foxdpi -i capture                   # Auto-detect active Wi-Fi/Ethernet and capture live
+  foxdpi -i <iface>                   # Capture live on specific interface (e.g. -i Wi-Fi)
+  foxdpi -f <path.pcap> [-o <out_dir>] # Replay and analyze offline PCAP
+  foxdpi -list                        # List available network interfaces
 
 Flags:
   -f string
         Path to PCAP file for offline analysis
   -i string
-        Network interface name for live packet capture
+        Interface to capture live ('capture' for auto-detection, e.g. -i capture, -i Wi-Fi)
   -o string
         Directory to store flows.jsonl and alerts.jsonl (default "output")
   -rotate-mb int
         Maximum telemetry file size in MB before gzip rotation (default 10)
   -list
         List available network interfaces and exit
+```
+
+### Live Alerting & Session Summary
+
+During live capture, security alerts stream directly to the terminal in real time while asynchronous telemetry writes to `output/flows.jsonl` and `output/alerts.jsonl`. Pressing `Ctrl+C` prints an operational summary:
+
+```
+[ALERT] [HIGH] SUSPICIOUS_HIGH_PORT_TLS: TLS handshake on non-standard port
+        Endpoints: 172.17.214.61:54200 -> 185.220.101.5:4444 (TLS)
+^C
+==================================================
+               FOX-DPI RUN SUMMARY                
+==================================================
+ Capture Mode            : Live Capture on Wi-Fi [Data Link: IPv4]
+ Total Packets Processed : 42,810
+ Total Volume Captured   : 38.4 MB
+ Packet Loss / Errors    : 0
+--------------------------------------------------
+ Flows Emitted to Sink   : 184
+ Active Flows at Exit    : 64
+ Security Alerts Fired   : 1
+ Dropped Sink Events     : 0
+--------------------------------------------------
+ Telemetry Output Dir    : output/
+ Elapsed Run Time        : 1m15s
+ Processing Throughput   : 570 pkts/sec
+==================================================
 ```
 
 ---
