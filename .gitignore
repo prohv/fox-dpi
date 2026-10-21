@@ -5,7 +5,8 @@
 *.dll
 *.so
 *.dylib
-bin/
+bin/*
+!bin/foxdpi.js
 dist/
 
 # Test artifacts

@@ -1,0 +1,44 @@
+{
+  "name": "foxdpi",
+  "version": "0.1.1",
+  "description": "High-Performance Passive Layer 7 Deep Packet Inspection Engine in Go",
+  "bin": {
+    "foxdpi": "./bin/foxdpi.js"
+  },
+  "scripts": {
+    "postinstall": "node ./scripts/install.js",
+    "test": "node ./bin/foxdpi.js -version"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prohv/fox-dpi.git"
+  },
+  "keywords": [
+    "dpi",
+    "deep-packet-inspection",
+    "packet-capture",
+    "network-security",
+    "wireshark",
+    "pcap",
+    "packet-analyzer",
+    "sniffer",
+    "layer7",
+    "threat-detection"
+  ],
+  "author": "prohv",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/prohv/fox-dpi/issues"
+  },
+  "homepage": "https://github.com/prohv/fox-dpi#readme",
+  "files": [
+    "bin/foxdpi.js",
+    "scripts/install.js",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+# Development & Source files
+.git/
+.github/
+internal/
+cmd/
+test/
+docs/
+output/
+dist/
+*.go
+go.mod
+go.sum
+scripts/build-releases.ps1
