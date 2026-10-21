@@ -1,5 +1,5 @@
 /**
- * Fox DPI Post-Install Script
+ * Fox DPI Post-Install & On-Demand Downloader
  * Downloads the pre-built, compressed binary for the current OS and architecture from GitHub Releases.
  */
 
@@ -8,7 +8,7 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-const VERSION = 'v0.1.1';
+const VERSION = 'v0.1.2';
 const REPO = 'prohv/fox-dpi';
 
 const PLATFORM_MAP = {
@@ -73,7 +73,7 @@ function download(url, dest) {
   });
 }
 
-async function install() {
+async function ensureBinary() {
   const binDir = path.join(__dirname, '..', 'bin');
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
@@ -84,17 +84,18 @@ async function install() {
     info = getPlatformInfo();
   } catch (err) {
     console.warn(`[!] ${err.message}`);
-    return tryGoBuildFallback(binDir);
+    const fallback = tryGoBuildFallback(binDir);
+    if (fallback) return fallback;
+    throw err;
   }
 
   const targetBinary = path.join(binDir, info.binaryName);
   if (fs.existsSync(targetBinary)) {
-    console.log(`[+] Fox DPI binary already present at: ${targetBinary}`);
-    return;
+    return targetBinary;
   }
 
-  console.log(`[+] Installing Fox DPI ${VERSION} for ${info.osType}-${info.arch}...`);
-  console.log(`[+] Downloading asset: ${info.url}`);
+  console.log(`[+] Fox DPI native binary not found. Fetching for ${info.osType}-${info.arch}...`);
+  console.log(`[+] Downloading: ${info.url}`);
 
   const tempArchive = path.join(binDir, info.archiveName);
 
@@ -120,11 +121,16 @@ async function install() {
       fs.chmodSync(targetBinary, 0o755);
     }
 
-    console.log(`[✓] Fox DPI ${VERSION} successfully installed into ${targetBinary}`);
+    console.log(`[✓] Fox DPI ${VERSION} ready: ${targetBinary}\n`);
+    return targetBinary;
   } catch (err) {
     console.warn(`[!] Download from GitHub failed: ${err.message}`);
     console.log(`[*] Attempting local compilation fallback via 'go build'...`);
-    tryGoBuildFallback(binDir);
+    const fallback = tryGoBuildFallback(binDir);
+    if (fallback && fs.existsSync(fallback)) {
+      return fallback;
+    }
+    throw new Error(`Failed to install Fox DPI native binary: ${err.message}`);
   }
 }
 
@@ -145,17 +151,23 @@ function tryGoBuildFallback(binDir) {
         fs.chmodSync(outputPath, 0o755);
       }
       console.log(`[✓] Compiled from source successfully: ${outputPath}`);
-      return;
+      return outputPath;
     }
   } catch (buildErr) {
     console.warn(`[!] Local Go build unavailable: ${buildErr.message}`);
   }
 
-  console.log(`\n------------------------------------------------------------`);
-  console.log(`Notice: Binary could not be downloaded or built automatically.`);
-  console.log(`You can build it manually by running in the repository:`);
-  console.log(`  go build -ldflags="-s -w" -o bin/foxdpi ./cmd/foxdpi`);
-  console.log(`------------------------------------------------------------\n`);
+  return null;
 }
 
-install();
+// If invoked directly via `node scripts/install.js` or `npm install` postinstall:
+if (require.main === module) {
+  ensureBinary().catch((err) => {
+    console.warn(`[!] Post-install notice: ${err.message}`);
+  });
+}
+
+module.exports = {
+  ensureBinary,
+  VERSION,
+};

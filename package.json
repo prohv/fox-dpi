@@ -1,6 +1,6 @@
 {
   "name": "foxdpi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "High-Performance Passive Layer 7 Deep Packet Inspection Engine in Go",
   "bin": {
     "foxdpi": "./bin/foxdpi.js"
