@@ -45,3 +45,40 @@ func Test_CLI_Execution_E2E(t *testing.T) {
 		t.Errorf("alerts.jsonl was not generated")
 	}
 }
+
+func Test_CLI_Help_E2E(t *testing.T) {
+	cmd := exec.Command("go", "run", "../cmd/foxdpi")
+	out, err := cmd.CombinedOutput()
+	// Exits with code 1 on empty args
+	if err == nil {
+		t.Errorf("expected error exit code when no flags passed")
+	}
+	outputStr := string(out)
+	if !strings.Contains(outputStr, "foxdpi -i capture") {
+		t.Errorf("expected usage to contain 'foxdpi -i capture', got: %s", outputStr)
+	}
+}
+
+func Test_CLI_ListInterfaces_E2E(t *testing.T) {
+	cmd := exec.Command("go", "run", "../cmd/foxdpi", "-list")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CLI -list failed: %v, output: %s", err, string(out))
+	}
+	outputStr := string(out)
+	if !strings.Contains(outputStr, "Available Network Interfaces:") {
+		t.Errorf("expected interface list table in output, got: %s", outputStr)
+	}
+}
+
+func Test_CLI_InvalidInterface_E2E(t *testing.T) {
+	cmd := exec.Command("go", "run", "../cmd/foxdpi", "-i", "nonexistent_iface_9999")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected error for non-existent interface")
+	}
+	outputStr := string(out)
+	if !strings.Contains(outputStr, "Error starting live capture") {
+		t.Errorf("expected capture error message, got: %s", outputStr)
+	}
+}

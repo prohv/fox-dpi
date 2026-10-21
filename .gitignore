@@ -1,4 +1,5 @@
 # Binaries and build artifacts
+/foxdpi
 *.exe
 *.exe~
 *.dll
@@ -13,4 +14,7 @@ dist/
 
 # Documentation / notes
 docs/
+
+# Runtime telemetry outputs
+output/
 

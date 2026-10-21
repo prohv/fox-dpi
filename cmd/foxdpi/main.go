@@ -19,7 +19,7 @@ import (
 
 func main() {
 	pcapFile := flag.String("f", "", "Path to PCAP file for offline analysis")
-	ifaceName := flag.String("i", "", "Network interface name for packet capture")
+	ifaceName := flag.String("i", "", "Interface to capture live ('capture' for auto-detection, e.g. -i capture, -i Wi-Fi)")
 	outputDir := flag.String("o", "output", "Directory to store flows.jsonl and alerts.jsonl")
 	rotateMB := flag.Int("rotate-mb", 10, "Maximum telemetry file size in MB before gzip rotation")
 	listIfaces := flag.Bool("list", false, "List available network interfaces and exit")
@@ -34,16 +34,12 @@ func main() {
 	if *pcapFile == "" && *ifaceName == "" {
 		fmt.Println("Fox DPI - Passive Layer 7 Deep Packet Inspection Engine")
 		fmt.Println("Usage:")
-		fmt.Println("  foxdpi -f <path.pcap> [-o <out_dir>] [-rotate-mb <mb>]")
-		fmt.Println("  foxdpi -list")
+		fmt.Println("  foxdpi -i capture                   # Auto-detect active Wi-Fi/Ethernet and capture live")
+		fmt.Println("  foxdpi -i <iface>                   # Capture live on specific interface (e.g. -i Wi-Fi)")
+		fmt.Println("  foxdpi -f <path.pcap> [-o <out_dir>] # Replay and analyze offline PCAP")
+		fmt.Println("  foxdpi -list                        # List available network interfaces")
 		fmt.Println()
 		flag.PrintDefaults()
-		os.Exit(1)
-	}
-
-	if *ifaceName != "" && *pcapFile == "" {
-		fmt.Fprintf(os.Stderr, "Live interface capture (-i %s) requires platform-native packet drivers.\n", *ifaceName)
-		fmt.Fprintf(os.Stderr, "Please specify an offline PCAP file (-f <file.pcap>) for analysis.\n")
 		os.Exit(1)
 	}
 
@@ -58,20 +54,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	isLive := (*ifaceName != "")
+	telemetrySink := sink.NewConsoleAlertSink(fileSink, isLive)
+
 	// Open Packet Source
-	src, err := capture.OpenOffline(*pcapFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error opening PCAP file: %v\n", err)
-		_ = fileSink.Close()
-		os.Exit(1)
+	var src capture.PacketSource
+	var captureDesc string
+
+	if *pcapFile != "" {
+		s, err := capture.OpenOffline(*pcapFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening PCAP file: %v\n", err)
+			_ = telemetrySink.Close()
+			os.Exit(1)
+		}
+		src = s
+		captureDesc = fmt.Sprintf("Offline PCAP Replay (%s)", *pcapFile)
+	} else {
+		s, err := capture.OpenLive(*ifaceName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\n[!] Error starting live capture on %q:\n  %v\n\n", *ifaceName, err)
+			_ = telemetrySink.Close()
+			os.Exit(1)
+		}
+		src = s
+		captureDesc = fmt.Sprintf("Live Capture on %s [Data Link: %v]", *ifaceName, s.LinkType())
 	}
 	defer src.Close()
 
 	// Initialize DPI Engine
-	eng, err := engine.NewEngine(src.LinkType(), flow.DefaultEvictionConfig(), fileSink)
+	eng, err := engine.NewEngine(src.LinkType(), flow.DefaultEvictionConfig(), telemetrySink)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing engine: %v\n", err)
-		_ = fileSink.Close()
+		_ = telemetrySink.Close()
 		os.Exit(1)
 	}
 
@@ -80,8 +95,11 @@ func main() {
 	defer stop()
 
 	startTime := time.Now()
-	fmt.Printf("[+] Fox DPI started. Analyzing: %s\n", *pcapFile)
+	fmt.Printf("[+] Fox DPI started. Mode: %s\n", captureDesc)
 	fmt.Printf("[+] Telemetry sink streaming to: %s/\n", *outputDir)
+	if isLive {
+		fmt.Println("[+] Press Ctrl+C to stop capture and view session summary.")
+	}
 
 	err = eng.Run(ctx, src)
 	elapsed := time.Since(startTime)
@@ -94,7 +112,7 @@ func main() {
 	}
 
 	// Print Operational Summary
-	printSummary(eng.Metrics(), elapsed, *outputDir)
+	printSummary(eng.Metrics(), elapsed, *outputDir, captureDesc)
 }
 
 func printInterfaces() {
@@ -122,7 +140,7 @@ func printInterfaces() {
 	fmt.Println("--------------------------------------------------------------------------------")
 }
 
-func printSummary(m engine.Metrics, elapsed time.Duration, outDir string) {
+func printSummary(m engine.Metrics, elapsed time.Duration, outDir, captureDesc string) {
 	secs := elapsed.Seconds()
 	rate := float64(0)
 	if secs > 0 {
@@ -130,22 +148,23 @@ func printSummary(m engine.Metrics, elapsed time.Duration, outDir string) {
 	}
 
 	fmt.Println()
-	fmt.Println("========================================")
-	fmt.Println("          FOX-DPI RUN SUMMARY           ")
-	fmt.Println("========================================")
+	fmt.Println("==================================================")
+	fmt.Println("               FOX-DPI RUN SUMMARY                ")
+	fmt.Println("==================================================")
+	fmt.Printf(" Capture Mode            : %s\n", captureDesc)
 	fmt.Printf(" Total Packets Processed : %s\n", formatNumber(m.TotalPackets))
 	fmt.Printf(" Total Volume Captured   : %s\n", formatBytes(m.TotalBytes))
 	fmt.Printf(" Packet Loss / Errors    : %s\n", formatNumber(m.DropPackets))
-	fmt.Println("----------------------------------------")
+	fmt.Println("--------------------------------------------------")
 	fmt.Printf(" Flows Emitted to Sink   : %s\n", formatNumber(m.EmittedFlows))
 	fmt.Printf(" Active Flows at Exit    : %s\n", formatNumber(uint64(m.ActiveFlows)))
 	fmt.Printf(" Security Alerts Fired   : %s\n", formatNumber(m.EmittedAlerts))
 	fmt.Printf(" Dropped Sink Events     : %s\n", formatNumber(m.DroppedFlows+m.DroppedAlerts))
-	fmt.Println("----------------------------------------")
+	fmt.Println("--------------------------------------------------")
 	fmt.Printf(" Telemetry Output Dir    : %s/\n", outDir)
 	fmt.Printf(" Elapsed Run Time        : %s\n", elapsed.Round(time.Millisecond))
 	fmt.Printf(" Processing Throughput   : %s pkts/sec\n", formatNumber(uint64(rate)))
-	fmt.Println("========================================")
+	fmt.Println("==================================================")
 }
 
 func formatNumber(n uint64) string {
