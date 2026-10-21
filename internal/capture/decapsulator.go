@@ -48,30 +48,29 @@ func NewDecapsulator(linkType layers.LinkType) (*Decapsulator, error) {
 		decoded: make([]gopacket.LayerType, 0, 8),
 	}
 
-	var firstLayer gopacket.DecodingLayer
 	var firstType gopacket.LayerType
+	var decoders []gopacket.DecodingLayer
 
 	switch linkType {
 	case layers.LinkTypeEthernet:
-		firstLayer = &d.eth
 		firstType = layers.LayerTypeEthernet
+		decoders = []gopacket.DecodingLayer{&d.eth, &d.ip4, &d.ip6, &d.tcp, &d.udp}
+	case layers.LinkTypeIPv4, layers.LinkTypeRaw:
+		firstType = layers.LayerTypeIPv4
+		decoders = []gopacket.DecodingLayer{&d.ip4, &d.tcp, &d.udp}
+	case layers.LinkTypeIPv6:
+		firstType = layers.LayerTypeIPv6
+		decoders = []gopacket.DecodingLayer{&d.ip6, &d.tcp, &d.udp}
 	case layers.LinkTypeNull, layers.LinkTypeLoop:
-		firstLayer = &d.loop
 		firstType = layers.LayerTypeLoopback
+		decoders = []gopacket.DecodingLayer{&d.loop, &d.ip4, &d.ip6, &d.tcp, &d.udp}
 	default:
 		// Default to Ethernet fallback
-		firstLayer = &d.eth
 		firstType = layers.LayerTypeEthernet
+		decoders = []gopacket.DecodingLayer{&d.eth, &d.ip4, &d.ip6, &d.tcp, &d.udp}
 	}
 
-	d.parser = gopacket.NewDecodingLayerParser(
-		firstType,
-		firstLayer,
-		&d.ip4,
-		&d.ip6,
-		&d.tcp,
-		&d.udp,
-	)
+	d.parser = gopacket.NewDecodingLayerParser(firstType, decoders...)
 	d.parser.IgnoreUnsupported = true
 
 	return d, nil

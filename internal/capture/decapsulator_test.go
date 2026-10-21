@@ -152,6 +152,51 @@ func Test_Decapsulator_MalformedAndTruncated_NoPanic(t *testing.T) {
 	}
 }
 
+func Test_Decapsulator_Raw_IPv4(t *testing.T) {
+	d, err := NewDecapsulator(layers.LinkTypeIPv4)
+	if err != nil {
+		t.Fatalf("failed to create IPv4 decapsulator: %v", err)
+	}
+
+	ip := &layers.IPv4{
+		Version:  4,
+		IHL:      5,
+		SrcIP:    net.ParseIP("10.0.0.5"),
+		DstIP:    net.ParseIP("1.1.1.1"),
+		Protocol: layers.IPProtocolTCP,
+	}
+	tcp := &layers.TCP{
+		SrcPort: layers.TCPPort(45000),
+		DstPort: layers.TCPPort(443),
+		SYN:     true,
+	}
+	_ = tcp.SetNetworkLayerForChecksum(ip)
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
+	_ = gopacket.SerializeLayers(buf, opts, ip, tcp, gopacket.Payload([]byte("HELLO_RAW_IP")))
+
+	rawIPv4 := buf.Bytes()
+
+	pkt, err := d.Decode(rawIPv4)
+	if err != nil {
+		t.Fatalf("unexpected error decoding raw IPv4: %v", err)
+	}
+
+	if pkt.SrcIP.String() != "10.0.0.5" || pkt.DstIP.String() != "1.1.1.1" {
+		t.Fatalf("unexpected IPs: %s -> %s", pkt.SrcIP, pkt.DstIP)
+	}
+	if pkt.SrcPort != 45000 || pkt.DstPort != 443 {
+		t.Fatalf("unexpected ports: %d -> %d", pkt.SrcPort, pkt.DstPort)
+	}
+	if pkt.Proto != 6 {
+		t.Fatalf("expected Proto 6, got %d", pkt.Proto)
+	}
+	if string(pkt.Payload) != "HELLO_RAW_IP" {
+		t.Fatalf("unexpected payload: %s", string(pkt.Payload))
+	}
+}
+
 func Benchmark_Decapsulate(b *testing.B) {
 	d, _ := NewDecapsulator(layers.LinkTypeEthernet)
 	raw := buildTCPPacket(
