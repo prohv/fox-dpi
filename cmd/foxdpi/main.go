@@ -17,14 +17,23 @@ import (
 	"fox-dpi/internal/sink"
 )
 
+// Version is the current release of Fox DPI.
+const Version = "v0.1.1"
+
 func main() {
 	pcapFile := flag.String("f", "", "Path to PCAP file for offline analysis")
 	ifaceName := flag.String("i", "", "Interface to capture live ('capture' for auto-detection, e.g. -i capture, -i Wi-Fi)")
 	outputDir := flag.String("o", "output", "Directory to store flows.jsonl and alerts.jsonl")
 	rotateMB := flag.Int("rotate-mb", 10, "Maximum telemetry file size in MB before gzip rotation")
 	listIfaces := flag.Bool("list", false, "List available network interfaces and exit")
+	versionFlag := flag.Bool("version", false, "Print foxdpi version and exit")
 
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("foxdpi %s\n", Version)
+		return
+	}
 
 	if *listIfaces {
 		printInterfaces()
@@ -32,12 +41,13 @@ func main() {
 	}
 
 	if *pcapFile == "" && *ifaceName == "" {
-		fmt.Println("Fox DPI - Passive Layer 7 Deep Packet Inspection Engine")
+		fmt.Printf("Fox DPI (%s) - Passive Layer 7 Deep Packet Inspection Engine\n", Version)
 		fmt.Println("Usage:")
 		fmt.Println("  foxdpi -i capture                   # Auto-detect active Wi-Fi/Ethernet and capture live")
 		fmt.Println("  foxdpi -i <iface>                   # Capture live on specific interface (e.g. -i Wi-Fi)")
 		fmt.Println("  foxdpi -f <path.pcap> [-o <out_dir>] # Replay and analyze offline PCAP")
 		fmt.Println("  foxdpi -list                        # List available network interfaces")
+		fmt.Println("  foxdpi -version                     # Print version and exit")
 		fmt.Println()
 		flag.PrintDefaults()
 		os.Exit(1)

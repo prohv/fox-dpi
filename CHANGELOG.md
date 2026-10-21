@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-10-21
+
+### Added
+
+#### Native Live Packet Capture
+- **Out-of-the-Box Live Capture**: Single command (`foxdpi -i capture`) for live packet capture without third-party drivers (no Npcap, WinPcap, or Wireshark installations required).
+- **Intelligent Interface Auto-Detection**: Automatically detects, prioritizes, and binds to active internet-facing network adapters (Wi-Fi/WLAN first, primary Ethernet fallback).
+- **Windows Winsock2 Raw Socket Tap**: Pure-Go raw socket tap utilizing `SIO_RCVALL` and native `ws2_32.dll` `recv` via `syscall.SyscallN` for line-rate Layer 3 datagrams.
+- **Linux AF_PACKET Source**: Native POSIX `AF_PACKET` raw socket capture delivering Layer 2 Ethernet frames at line-rate.
+- **macOS BPF Tap**: Native Berkeley Packet Filter (`/dev/bpf*`) descriptor binding with `BIOCIMMEDIATE` packet delivery.
+- **Layer 3 Raw IPv4 Decapsulation**: Zero-allocation decapsulation for raw IPv4 wire frames (`layers.LinkTypeRaw`), bypassing Ethernet framing.
+
+#### Threat Alerting & CLI Operations
+- **Real-Time Console Threat Alerting**: Real-time formatted threat alert streaming directly to `stderr` (`ConsoleAlertSink`) concurrent with asynchronous JSON Lines logging.
+- **Graceful Terminal Session Summary**: Tabular run summary displayed upon `Ctrl+C` with non-blocking socket termination.
+- **Version Flag**: Added `-version` flag to print version information and exit.
+
+### Fixed
+- **Windows Raw Socket Packet Reception**: Replaced unsupported `syscall.Recvfrom` stub with `ws2_32.dll` `recv` using `syscall.SyscallN`, fixing `recvfrom: not supported by windows`.
+- **Data Link Type Formatting**: Corrected data link presentation from `UnknownLinkType` to `Raw IPv4`.
+- **Signal Responsiveness**: Added socket release listener unblocking blocking socket reads immediately on `Ctrl+C`.
+- **Privilege Error Handling**: Gracefully intercepts `WSAEACCES` / error 10013 to provide actionable Administrator elevation instructions.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added

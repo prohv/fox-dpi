@@ -3,6 +3,7 @@
 > High-Performance Passive Layer 7 Deep Packet Inspection Engine in Go.
 
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Release](https://img.shields.io/badge/release-v0.1.1-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero-Alloc](https://img.shields.io/badge/Hot_Path-Zero--Alloc-brightgreen.svg)]()
 [![Race-Free](https://img.shields.io/badge/Concurrency-100%25_Race--Free-success.svg)]()
@@ -16,7 +17,7 @@ Fox DPI is a lightweight, line-rate passive Deep Packet Inspection (DPI) engine 
 ```
        Fox DPI Ingestion Pipeline
 ┌───────────────────────────────────────┐
-│ Ingestion: libpcap / offline .pcap    │
+│ Ingestion: Native Raw / Live / PCAP   │
 └───────────────────┬───────────────────┘
                     ▼
 ┌───────────────────────────────────────┐
@@ -147,6 +148,7 @@ Usage:
   foxdpi -i <iface>                   # Capture live on specific interface (e.g. -i Wi-Fi)
   foxdpi -f <path.pcap> [-o <out_dir>] # Replay and analyze offline PCAP
   foxdpi -list                        # List available network interfaces
+  foxdpi -version                     # Print version and exit
 
 Flags:
   -f string
@@ -159,6 +161,8 @@ Flags:
         Maximum telemetry file size in MB before gzip rotation (default 10)
   -list
         List available network interfaces and exit
+  -version
+        Print foxdpi version and exit
 ```
 
 ### Live Alerting & Session Summary

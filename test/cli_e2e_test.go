@@ -82,3 +82,15 @@ func Test_CLI_InvalidInterface_E2E(t *testing.T) {
 		t.Errorf("expected capture error message, got: %s", outputStr)
 	}
 }
+
+func Test_CLI_Version_E2E(t *testing.T) {
+	cmd := exec.Command("go", "run", "../cmd/foxdpi", "-version")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CLI -version failed: %v, output: %s", err, string(out))
+	}
+	outputStr := string(out)
+	if !strings.Contains(outputStr, "foxdpi v0.1.1") {
+		t.Errorf("expected version output 'foxdpi v0.1.1', got: %s", outputStr)
+	}
+}
