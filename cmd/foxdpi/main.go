@@ -78,7 +78,15 @@ func main() {
 			os.Exit(1)
 		}
 		src = s
-		captureDesc = fmt.Sprintf("Live Capture on %s [Data Link: %v]", *ifaceName, s.LinkType())
+		linkName := s.LinkType().String()
+		if s.LinkType() == 101 || s.LinkType() == 228 { // LinkTypeRaw or LinkTypeIPv4
+			linkName = "Raw IPv4"
+		}
+		if namer, ok := s.(interface{ InterfaceName() string; IP() net.IP }); ok {
+			captureDesc = fmt.Sprintf("Live Capture on %s (%s) [Data Link: %s]", namer.InterfaceName(), namer.IP(), linkName)
+		} else {
+			captureDesc = fmt.Sprintf("Live Capture on %s [Data Link: %s]", *ifaceName, linkName)
+		}
 	}
 	defer src.Close()
 
@@ -93,6 +101,12 @@ func main() {
 	// Cooperative Signal Handling for Graceful Shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Interrupt blocking socket read immediately upon Ctrl+C for responsive teardown
+	go func() {
+		<-ctx.Done()
+		_ = src.Close()
+	}()
 
 	startTime := time.Now()
 	fmt.Printf("[+] Fox DPI started. Mode: %s\n", captureDesc)

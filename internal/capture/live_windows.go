@@ -5,6 +5,7 @@ package capture
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"syscall"
 	"time"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+)
+
+var (
+	modws2_32 = syscall.NewLazyDLL("ws2_32.dll")
+	procRecv  = modws2_32.NewProc("recv")
 )
 
 const (
@@ -110,29 +116,40 @@ func OpenLiveWindows(ifaceName string) (*WindowsRawSocketSource, error) {
 	}, nil
 }
 
-// ReadPacket polls the next raw IP packet from the Winsock raw socket.
+// ReadPacket polls the next raw IP packet from the Winsock raw socket using ws2_32 recv.
 func (s *WindowsRawSocketSource) ReadPacket() ([]byte, gopacket.CaptureInfo, error) {
-	n, _, err := syscall.Recvfrom(s.fd, s.buf, 0)
-	if err != nil {
+	r1, _, err := syscall.SyscallN(
+		procRecv.Addr(),
+		uintptr(s.fd),
+		uintptr(unsafe.Pointer(&s.buf[0])),
+		uintptr(len(s.buf)),
+		0,
+	)
+	n := int32(r1)
+	if n < 0 {
 		if s.closed {
-			return nil, gopacket.CaptureInfo{}, fmt.Errorf("socket closed")
+			return nil, gopacket.CaptureInfo{}, io.EOF
 		}
-		return nil, gopacket.CaptureInfo{}, fmt.Errorf("recvfrom: %w", err)
+		switch err {
+		case 10004, 10038, 10058, syscall.WSAECONNABORTED, syscall.WSAECONNRESET:
+			return nil, gopacket.CaptureInfo{}, io.EOF
+		}
+		return nil, gopacket.CaptureInfo{}, fmt.Errorf("recv: %w", err)
 	}
 
 	ts := time.Now()
 	ci := gopacket.CaptureInfo{
 		Timestamp:     ts,
-		CaptureLength: n,
-		Length:        n,
+		CaptureLength: int(n),
+		Length:        int(n),
 	}
 
 	return s.buf[:n], ci, nil
 }
 
-// LinkType returns LinkTypeIPv4 because Windows raw sockets deliver Layer 3 IP datagrams.
+// LinkType returns LinkTypeRaw because Windows raw sockets deliver Layer 3 IP datagrams.
 func (s *WindowsRawSocketSource) LinkType() layers.LinkType {
-	return layers.LinkTypeIPv4
+	return layers.LinkTypeRaw
 }
 
 // InterfaceName returns the name of the active capture adapter.
