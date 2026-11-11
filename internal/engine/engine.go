@@ -92,7 +92,17 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 
 	// L7 Inspection Pipeline
 	if len(pkt.Payload) > 0 && !f.L7Bypass {
-		if pkt.Proto == 17 { // UDP (e.g. DNS)
+		if pkt.Proto == 17 { // UDP (e.g. DNS, QUIC)
+			// Fast-path: UDP port 443 with QUIC fixed bit (0x40) is QUIC/HTTP/3, not DNS
+			if (pkt.DstPort == 443 || pkt.SrcPort == 443) && len(pkt.Payload) > 0 && (pkt.Payload[0]&0x40 != 0) {
+				f.L7Identified = true
+				f.L7Bypass = true
+				f.SetL7Metadata(protocol.Metadata{
+					Protocol: "QUIC",
+				})
+				return f, nil
+			}
+
 			verdict, meta, _ := e.dispatcher.Dispatch(pkt.Payload, 17)
 			if verdict == protocol.VerdictMatched {
 				f.SetL7Metadata(meta)
@@ -119,6 +129,22 @@ func (e *Engine) ProcessFrame(data []byte, ts time.Time) (*flow.Flow, error) {
 	}
 
 	return f, nil
+}
+
+// isStandardTLSPort checks whether a destination port is standard for HTTPS or legitimate infrastructure.
+func isStandardTLSPort(port uint16) bool {
+	switch port {
+	case 443, 8443: // Standard HTTPS / HTTPS-Alt
+		return true
+	case 6443, 9443: // Kubernetes API server / Webhooks
+		return true
+	case 5432: // PostgreSQL TLS
+		return true
+	case 6380: // Redis TLS
+		return true
+	default:
+		return false
+	}
 }
 
 func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
@@ -190,13 +216,13 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 
 	// Rule 2: TLS Port Checks
 	if f.L7Metadata.Protocol == "TLS" {
-		// Fast-path: standard HTTPS port with valid SNI (99% of traffic), exit immediately in 1 cycle
-		if (respPort == 443 || respPort == 8443) && f.L7Metadata.Host != "direct-ip" {
+		// Fast-path: standard HTTPS and infrastructure ports with valid SNI (99% of traffic), exit immediately in 1 cycle
+		if isStandardTLSPort(respPort) && f.L7Metadata.Host != "direct-ip" {
 			return
 		}
 
 		f.AlertEmitted = true
-		if f.L7Metadata.Host == "direct-ip" && (respPort == 443 || respPort == 8443) {
+		if f.L7Metadata.Host == "direct-ip" && isStandardTLSPort(respPort) {
 			e.sink.EmitAlert(sink.AlertEvent{
 				Timestamp: f.LastSeen,
 				Rule:      "DIRECT_IP_HTTPS",
@@ -275,8 +301,8 @@ func (e *Engine) checkSecurityAlerts(f *flow.Flow) {
 		}
 	}
 
-	// Rule 4: DNS on non-standard port (not 53 and not 853)
-	if f.L7Metadata.Protocol == "DNS" && respPort != 53 && respPort != 853 {
+	// Rule 4: DNS on non-standard port (not standard DNS 53, DoT 853, and not LAN multicast 5353 mDNS / 5355 LLMNR)
+	if f.L7Metadata.Protocol == "DNS" && respPort != 53 && respPort != 853 && respPort != 5353 && respPort != 5355 {
 		f.AlertEmitted = true
 		e.sink.EmitAlert(sink.AlertEvent{
 			Timestamp: f.LastSeen,
