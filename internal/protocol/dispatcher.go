@@ -41,8 +41,8 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 			return VerdictNeedMoreData, Metadata{}, nil
 		}
 
-		if isHTTPPrefix(payload) {
-			return d.http.Inspect(payload)
+		if v, m, err := d.http.Inspect(payload); v != VerdictUnknown {
+			return v, m, err
 		}
 
 		// 2. Sliding-Window Scan (Bounded to 64 bytes) for Padding Evasion Defense (MITRE T1001.003)
@@ -66,43 +66,15 @@ func (d *Dispatcher) Dispatch(payload []byte, proto uint8) (Verdict, Metadata, e
 
 			// Fast search for HTTP verbs
 			for i := 1; i <= limit-4; i++ {
-				if isHTTPPrefix(payload[i:]) {
-					v, m, err := d.http.Inspect(payload[i:])
+				if v, m, err := d.http.Inspect(payload[i:]); v != VerdictUnknown {
 					if v == VerdictMatched {
 						m.PaddingOffset = i
-						return v, m, err
-					} else if v == VerdictNeedMoreData {
-						return v, m, err
 					}
+					return v, m, err
 				}
 			}
 		}
 	}
 
 	return VerdictUnknown, Metadata{}, nil
-}
-
-func isHTTPPrefix(data []byte) bool {
-	if len(data) < 3 {
-		return false
-	}
-	switch data[0] {
-	case 'G': // GET
-		return len(data) >= 4 && data[1] == 'E' && data[2] == 'T' && data[3] == ' '
-	case 'P': // POST, PUT, PATCH
-		if len(data) >= 4 && data[1] == 'O' && data[2] == 'S' && data[3] == 'T' {
-			return true
-		}
-		if len(data) >= 4 && data[1] == 'U' && data[2] == 'T' && data[3] == ' ' {
-			return true
-		}
-		if len(data) >= 5 && data[1] == 'A' && data[2] == 'T' && data[3] == 'C' && data[4] == 'H' {
-			return true
-		}
-	case 'D': // DELETE
-		return len(data) >= 6 && data[1] == 'E' && data[2] == 'L' && data[3] == 'E' && data[4] == 'T' && data[5] == 'E'
-	case 'H': // HEAD
-		return len(data) >= 4 && data[1] == 'E' && data[2] == 'A' && data[3] == 'D'
-	}
-	return false
 }

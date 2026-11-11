@@ -52,9 +52,6 @@ func NewDecapsulator(linkType layers.LinkType) (*Decapsulator, error) {
 	var decoders []gopacket.DecodingLayer
 
 	switch linkType {
-	case layers.LinkTypeEthernet:
-		firstType = layers.LayerTypeEthernet
-		decoders = []gopacket.DecodingLayer{&d.eth, &d.ip4, &d.ip6, &d.tcp, &d.udp}
 	case layers.LinkTypeIPv4, layers.LinkTypeRaw:
 		firstType = layers.LayerTypeIPv4
 		decoders = []gopacket.DecodingLayer{&d.ip4, &d.tcp, &d.udp}
@@ -65,7 +62,7 @@ func NewDecapsulator(linkType layers.LinkType) (*Decapsulator, error) {
 		firstType = layers.LayerTypeLoopback
 		decoders = []gopacket.DecodingLayer{&d.loop, &d.ip4, &d.ip6, &d.tcp, &d.udp}
 	default:
-		// Default to Ethernet fallback
+		// Default to Ethernet
 		firstType = layers.LayerTypeEthernet
 		decoders = []gopacket.DecodingLayer{&d.eth, &d.ip4, &d.ip6, &d.tcp, &d.udp}
 	}
