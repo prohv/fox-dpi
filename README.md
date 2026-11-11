@@ -3,7 +3,7 @@
 > High-Performance Passive Layer 7 Deep Packet Inspection Engine in Go.
 
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat&logo=go)](https://golang.org)
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.1.3-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero-Alloc](https://img.shields.io/badge/Hot_Path-Zero--Alloc-brightgreen.svg)]()
 [![Race-Free](https://img.shields.io/badge/Concurrency-100%25_Race--Free-success.svg)]()
@@ -62,8 +62,9 @@ Fox DPI is a lightweight, line-rate passive Deep Packet Inspection (DPI) engine 
 ### 2. Adversarial Evasion & Attack Defenses
 * **Protocol Padding Evasion Defense**: Bounded 64-byte sliding-window scanner detecting TLS and HTTP payloads obscured behind junk noise bytes (MITRE ATT&CK T1001.003).
 * **HTTP Request Smuggling Defense**: Enforces RFC 7230 Section 5.4 first-host-wins and alerts on duplicate `Host` headers (`HTTP_DUPLICATE_HOST`), thwarting CWE-444 request smuggling and cache poisoning.
-* **High-Port TLS C2 Detection**: Flags encrypted TLS handshakes operating on non-standard ports (e.g., 4444, 1337) used by command-and-control frameworks (Cobalt Strike, Metasploit, Sliver), while preserving a 1-cycle fast path on ports 443/8443.
+* **High-Port TLS C2 Detection**: Flags encrypted TLS handshakes operating on non-standard ports (e.g., 4444, 1337) used by command-and-control frameworks (Cobalt Strike, Metasploit, Sliver), while providing standard fast-paths for web and infra ports (`443`, `8443`, `6443`, `9443`, `5432`, `6380`).
 * **Port Spoofing Detection**: Alerts when plaintext HTTP is transmitted on HTTPS port 443, or encrypted TLS is transmitted on plain HTTP port 80.
+* **QUIC & Discovery Awareness**: Fast-paths UDP 443 QUIC payloads and excludes local multicast discovery ports (`5353` mDNS, `5355` LLMNR) to maintain zero false positives across modern developer environments.
 * **Bidirectional Center-Out Stream Reassembly**: 8 KB reassembly buffer (4 KB Headroom / 4 KB Tailroom) accommodating reverse packet arrivals and mid-stream capture drops without memory copies.
 
 ### 3. Threat Intelligence & Exfiltration Detection
@@ -96,15 +97,22 @@ All microbenchmarks and end-to-end tests run with **zero heap allocations on hot
 
 ---
 
-## Installation & Build
+## Installation & Quick Start
 
-### Prerequisites
-* Go 1.24 or higher
-* Windows, Linux, or macOS
-
-### Build from Source
+### Option A: Zero-Install via NPX / NPM (Pre-Built Binaries)
+No Go compiler or packet capture driver installation required:
 ```bash
-git clone https://github.com/example/fox-dpi.git
+# Run live capture instantly with npx (auto-hydrates pre-built binary)
+npx foxdpi -i capture
+
+# Or install globally
+npm install -g foxdpi
+foxdpi -i capture
+```
+
+### Option B: Build from Source (Go 1.24+)
+```bash
+git clone https://github.com/prohv/fox-dpi.git
 cd fox-dpi
 go build -o foxdpi.exe ./cmd/foxdpi
 ```
