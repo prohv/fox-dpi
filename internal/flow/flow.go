@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"time"
 
+	"fox-dpi/internal/capture"
 	"fox-dpi/internal/protocol"
 	"fox-dpi/internal/reassembly"
 )
@@ -16,12 +17,12 @@ const (
 	DirectionServerToClient
 )
 
-// TCP flag bitmasks for stateful connection tracking
+// Forward capture flag bitmasks for stateful connection tracking in package flow
 const (
-	flagSYN uint8 = 1 << 0
-	flagACK uint8 = 1 << 1
-	flagFIN uint8 = 1 << 2
-	flagRST uint8 = 1 << 3
+	flagSYN = capture.FlagSYN
+	flagACK = capture.FlagACK
+	flagFIN = capture.FlagFIN
+	flagRST = capture.FlagRST
 )
 
 // Flow maintains connection metrics and lifecycle state for a bidirectional conversation.
@@ -84,10 +85,10 @@ func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uin
 	}
 
 	// TCP Handshake RTT tracking: SYN from client, SYN-ACK from server (skip once handshake established)
-	if (tcpFlags&flagSYN) != 0 && !f.SynAckSeen {
-		if isClient && (tcpFlags&flagACK) == 0 {
+	if (tcpFlags&capture.FlagSYN) != 0 && !f.SynAckSeen {
+		if isClient && (tcpFlags&capture.FlagACK) == 0 {
 			f.SynSeen = true
-		} else if !isClient && (tcpFlags&flagACK) != 0 && f.SynSeen {
+		} else if !isClient && (tcpFlags&capture.FlagACK) != 0 && f.SynSeen {
 			f.SynAckSeen = true
 			if t.After(f.FirstSeen) {
 				f.HandshakeRTT = t.Sub(f.FirstSeen)
@@ -96,7 +97,7 @@ func (f *Flow) Update(srcIP netip.Addr, srcPort uint16, length int, tcpFlags uin
 	}
 
 	// Teardown detection: mark closing on FIN or RST in single bitmask test
-	if (tcpFlags & (flagFIN | flagRST)) != 0 {
+	if (tcpFlags & (capture.FlagFIN | capture.FlagRST)) != 0 {
 		if !f.Closing {
 			f.Closing = true
 			f.CloseTime = t

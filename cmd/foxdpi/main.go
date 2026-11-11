@@ -65,7 +65,10 @@ func main() {
 	}
 
 	isLive := (*ifaceName != "")
-	telemetrySink := sink.NewConsoleAlertSink(fileSink, isLive)
+	var telemetrySink sink.Sink = fileSink
+	if isLive {
+		telemetrySink = sink.NewConsoleAlertSink(fileSink, true)
+	}
 
 	// Open Packet Source
 	var src capture.PacketSource

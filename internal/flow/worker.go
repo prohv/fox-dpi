@@ -30,7 +30,6 @@ type EvictionWorker struct {
 	config       EvictionConfig
 	onEvict      func(*Flow)
 	totalEvicted uint64
-	sweepCount   uint64
 }
 
 // NewEvictionWorker creates a worker bound to a flow table.
@@ -58,7 +57,6 @@ func (w *EvictionWorker) Start(ctx context.Context) {
 		case t := <-ticker.C:
 			evicted := w.table.EvictExpiredWithCallback(t, w.config.TCPIdle, w.config.UDPIdle, w.config.CloseGrace, w.onEvict)
 			atomic.AddUint64(&w.totalEvicted, uint64(evicted))
-			atomic.AddUint64(&w.sweepCount, 1)
 		}
 	}
 }
