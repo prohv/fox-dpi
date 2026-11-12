@@ -29,6 +29,10 @@ var (
 			Bold(true).
 			Foreground(ColorGreen)
 
+	// Muted / dim text style
+	StyleMuted = lipgloss.NewStyle().
+			Foreground(ColorMuted)
+
 	// Status Badges & Metrics
 	StyleMetricPill = lipgloss.NewStyle().
 			Foreground(ColorCyan)
