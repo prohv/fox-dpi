@@ -15,6 +15,10 @@ import (
 	"fox-dpi/internal/engine"
 	"fox-dpi/internal/flow"
 	"fox-dpi/internal/sink"
+	"fox-dpi/internal/tui"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-isatty"
 )
 
 // Version is the current release of Fox DPI.
@@ -25,6 +29,7 @@ func main() {
 	ifaceName := flag.String("i", "", "Interface to capture live ('capture' for auto-detection, e.g. -i capture, -i Wi-Fi)")
 	outputDir := flag.String("o", "output", "Directory to store flows.jsonl and alerts.jsonl")
 	rotateMB := flag.Int("rotate-mb", 10, "Maximum telemetry file size in MB before gzip rotation")
+	headlessFlag := flag.Bool("headless", false, "Disable interactive TUI and run in headless streaming mode")
 	listIfaces := flag.Bool("list", false, "List available network interfaces and exit")
 	versionFlag := flag.Bool("version", false, "Print foxdpi version and exit")
 
@@ -65,8 +70,16 @@ func main() {
 	}
 
 	isLive := (*ifaceName != "")
+	isTTY := (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())) &&
+		(isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd()))
+	useTUI := isLive && !*headlessFlag && isTTY
+
+	var tuiBridge *tui.EventBridge
 	var telemetrySink sink.Sink = fileSink
-	if isLive {
+	if useTUI {
+		tuiBridge = tui.NewEventBridge(fileSink, 512, 128)
+		telemetrySink = tuiBridge
+	} else if isLive {
 		telemetrySink = sink.NewConsoleAlertSink(fileSink, true)
 	}
 
@@ -122,13 +135,31 @@ func main() {
 	}()
 
 	startTime := time.Now()
-	fmt.Printf("[+] Fox DPI started. Mode: %s\n", captureDesc)
-	fmt.Printf("[+] Telemetry sink streaming to: %s/\n", *outputDir)
-	if isLive {
-		fmt.Println("[+] Press Ctrl+C to stop capture and view session summary.")
-	}
 
-	err = eng.Run(ctx, src)
+	if useTUI {
+		model := tui.NewModel(tuiBridge, eng.Metrics, captureDesc)
+		prog := tea.NewProgram(model, tea.WithAltScreen())
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- eng.Run(ctx, src)
+		}()
+
+		if _, progErr := prog.Run(); progErr != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", progErr)
+		}
+
+		stop()
+		_ = src.Close()
+		err = <-errCh
+	} else {
+		fmt.Printf("[+] Fox DPI started. Mode: %s\n", captureDesc)
+		fmt.Printf("[+] Telemetry sink streaming to: %s/\n", *outputDir)
+		if isLive {
+			fmt.Println("[+] Press Ctrl+C to stop capture and view session summary.")
+		}
+		err = eng.Run(ctx, src)
+	}
 	elapsed := time.Since(startTime)
 
 	// Explicitly drain active flows and flush telemetry sinks
