@@ -86,6 +86,26 @@ func (t *FlowTable) Get(key FlowKey) (*Flow, bool) {
 	return flow, exists
 }
 
+// SnapshotActiveFlows extracts up to max active flows across all shards.
+func (t *FlowTable) SnapshotActiveFlows(max int) []*Flow {
+	if max <= 0 {
+		max = 256
+	}
+	out := make([]*Flow, 0, max)
+	for i := 0; i < NumShards && len(out) < max; i++ {
+		shard := &t.shards[i]
+		shard.mu.RLock()
+		for _, f := range shard.flows {
+			out = append(out, f)
+			if len(out) >= max {
+				break
+			}
+		}
+		shard.mu.RUnlock()
+	}
+	return out
+}
+
 // Count returns the aggregate number of active flows across all shards.
 func (t *FlowTable) Count() int {
 	total := 0

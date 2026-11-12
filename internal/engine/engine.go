@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -409,5 +410,44 @@ func (e *Engine) Metrics() Metrics {
 		DroppedFlows:  sinkStats.DroppedFlows,
 		DroppedAlerts: sinkStats.DroppedAlerts,
 	}
+}
+
+// ActiveFlows returns a live snapshot of active flows from the flow table.
+func (e *Engine) ActiveFlows(max int) []sink.FlowEvent {
+	flows := e.table.SnapshotActiveFlows(max)
+	events := make([]sink.FlowEvent, len(flows))
+	for i, f := range flows {
+		protoStr := "OTHER"
+		if f.Key.Proto == 6 {
+			protoStr = "TCP"
+		} else if f.Key.Proto == 17 {
+			protoStr = "UDP"
+		}
+
+		durMs := f.LastSeen.Sub(f.FirstSeen).Milliseconds()
+		if durMs < 0 {
+			durMs = 0
+		}
+
+		events[i] = sink.FlowEvent{
+			Timestamp:   f.LastSeen,
+			SrcIP:       f.InitiatorIP.String(),
+			DstIP:       f.ResponderIP().String(),
+			SrcPort:     f.InitiatorPort,
+			DstPort:     f.ResponderPort(),
+			Protocol:    protoStr,
+			L7Protocol:  f.L7Metadata.Protocol,
+			Host:        f.L7Metadata.Host,
+			Packets:     f.ClientPackets + f.ServerPackets,
+			Bytes:       f.ClientBytes + f.ServerBytes,
+			DurationMs:  durMs,
+			HandshakeMs: f.HandshakeRTT.Milliseconds(),
+			Details:     f.L7Metadata.DetailsMap(),
+		}
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].Timestamp.After(events[j].Timestamp)
+	})
+	return events
 }
 
