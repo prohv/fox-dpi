@@ -33,6 +33,9 @@ var (
 	StyleMuted = lipgloss.NewStyle().
 			Foreground(ColorMuted)
 
+	StyleBorder = lipgloss.NewStyle().
+			Foreground(ColorBorder)
+
 	// Status Badges & Metrics
 	StyleMetricPill = lipgloss.NewStyle().
 			Foreground(ColorCyan)
@@ -60,12 +63,23 @@ var (
 
 	StyleKeyHint = lipgloss.NewStyle().
 			Foreground(ColorYellow)
+)
 
-	// Table & Containers
-	StyleRoundedBox = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(ColorBorder)
+// NewBox returns a fresh isolated rounded box style to prevent Lipgloss rule map mutation.
+func NewBox() lipgloss.Style {
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder)
+}
 
+// NewDrawerBox returns a fresh isolated lavender drawer box style.
+func NewDrawerBox() lipgloss.Style {
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(ColorLavender)
+}
+
+var (
 	StyleTableHeader = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(ColorMuted)
@@ -111,10 +125,6 @@ var (
 				Padding(0, 1)
 
 	// Inspector Drawer
-	StyleDrawer = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(ColorLavender)
-
 	StyleDrawerLabel = lipgloss.NewStyle().
 				Foreground(ColorMuted)
 

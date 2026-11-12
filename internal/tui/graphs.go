@@ -99,5 +99,5 @@ func (m Model) renderGraphsView(maxRows int) string {
 
 	lines = append(lines, "", StyleMuted.Render(" [Esc] / [1] Return to Live Flows"))
 
-	return StyleRoundedBox.Width(boxWidth).Height(maxRows).Render(strings.Join(lines, "\n"))
+	return NewBox().Width(boxWidth).Height(maxRows).Render(strings.Join(lines, "\n"))
 }

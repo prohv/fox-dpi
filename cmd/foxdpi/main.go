@@ -137,7 +137,7 @@ func main() {
 	startTime := time.Now()
 
 	if useTUI {
-		model := tui.NewModel(tuiBridge, eng.Metrics, captureDesc)
+		model := tui.NewModel(tuiBridge, eng.Metrics, eng.ActiveFlows, captureDesc)
 		prog := tea.NewProgram(model, tea.WithAltScreen())
 
 		errCh := make(chan error, 1)
@@ -199,30 +199,7 @@ func printInterfaces() {
 }
 
 func printSummary(m engine.Metrics, elapsed time.Duration, outDir, captureDesc string) {
-	secs := elapsed.Seconds()
-	rate := float64(0)
-	if secs > 0 {
-		rate = float64(m.TotalPackets) / secs
-	}
-
-	fmt.Println()
-	fmt.Println("==================================================")
-	fmt.Println("               FOX-DPI RUN SUMMARY                ")
-	fmt.Println("==================================================")
-	fmt.Printf(" Capture Mode            : %s\n", captureDesc)
-	fmt.Printf(" Total Packets Processed : %s\n", formatNumber(m.TotalPackets))
-	fmt.Printf(" Total Volume Captured   : %s\n", formatBytes(m.TotalBytes))
-	fmt.Printf(" Packet Loss / Errors    : %s\n", formatNumber(m.DropPackets))
-	fmt.Println("--------------------------------------------------")
-	fmt.Printf(" Flows Emitted to Sink   : %s\n", formatNumber(m.EmittedFlows))
-	fmt.Printf(" Active Flows at Exit    : %s\n", formatNumber(uint64(m.ActiveFlows)))
-	fmt.Printf(" Security Alerts Fired   : %s\n", formatNumber(m.EmittedAlerts))
-	fmt.Printf(" Dropped Sink Events     : %s\n", formatNumber(m.DroppedFlows+m.DroppedAlerts))
-	fmt.Println("--------------------------------------------------")
-	fmt.Printf(" Telemetry Output Dir    : %s/\n", outDir)
-	fmt.Printf(" Elapsed Run Time        : %s\n", elapsed.Round(time.Millisecond))
-	fmt.Printf(" Processing Throughput   : %s pkts/sec\n", formatNumber(uint64(rate)))
-	fmt.Println("==================================================")
+	fmt.Print(tui.RenderSummary(m, elapsed, outDir, captureDesc))
 }
 
 func formatNumber(n uint64) string {

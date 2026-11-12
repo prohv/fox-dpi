@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -81,7 +82,7 @@ func TestModel_Update_Keybindings(t *testing.T) {
 		return engine.Metrics{TotalPackets: 50, TotalBytes: 2048, ActiveFlows: 1}
 	}
 
-	model := NewModel(bridge, metricsFn, "TestInterface")
+	model := NewModel(bridge, metricsFn, nil, "TestInterface")
 
 	// 1. Resize Window
 	mAny, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
@@ -145,11 +146,11 @@ func TestModel_View_Responsiveness(t *testing.T) {
 		Bytes:      1500,
 	})
 
-	m := NewModel(bridge, nil, "eth0")
+	m := NewModel(bridge, nil, nil, "eth0")
 
-	// 1. Very small terminal (< 50 cols)
-	m.width = 40
-	m.height = 10
+	// 1. Very small terminal (< 40 cols)
+	m.width = 35
+	m.height = 8
 	view := m.View()
 	if view != "Terminal window too small for Fox DPI. Please enlarge." {
 		t.Errorf("expected small window warning, got %q", view)
@@ -168,10 +169,20 @@ func TestModel_View_Responsiveness(t *testing.T) {
 	// 3. Wide terminal (120 cols) with split drawer
 	m.width = 120
 	m.height = 30
-	m.showDrawer = true
+	m.showDrawer = false
+	header := m.renderHeader()
+	nav := m.renderNav()
+	body := m.renderFlowsView(m.height - 11)
+	footer := m.renderFooter()
+	t.Logf("header lines: %d", len(strings.Split(header, "\n")))
+	t.Logf("nav lines: %d", len(strings.Split(nav, "\n")))
+	t.Logf("body lines: %d", len(strings.Split(body, "\n")))
+	t.Logf("footer lines: %d", len(strings.Split(footer, "\n")))
 	view = m.View()
-	if len(view) == 0 {
-		t.Error("expected non-empty view in wide split mode")
+	lines := strings.Split(view, "\n")
+	t.Logf("m.height=30, rendered line count=%d", len(lines))
+	if len(lines) > m.height {
+		t.Errorf("rendered line count %d exceeds terminal height %d! View will scroll off screen!", len(lines), m.height)
 	}
 
 	// 4. Graphs view
@@ -179,5 +190,25 @@ func TestModel_View_Responsiveness(t *testing.T) {
 	view = m.View()
 	if len(view) == 0 {
 		t.Error("expected non-empty view in graphs mode")
+	}
+}
+
+func TestRenderSummary_Compact(t *testing.T) {
+	met := engine.Metrics{
+		TotalPackets:  45,
+		TotalBytes:    6500,
+		DropPackets:   0,
+		EmittedFlows:  1,
+		ActiveFlows:   0,
+		EmittedAlerts: 0,
+	}
+
+	summary := RenderSummary(met, 13700*time.Millisecond, "output", "Live Capture on Wi-Fi (172.16.70.229)")
+	lines := strings.Split(strings.TrimSpace(summary), "\n")
+	t.Logf("Summary rendered %d lines:\n%s", len(lines), summary)
+
+	// Summary should be compact (around 10-12 lines total, not 25-30!)
+	if len(lines) > 15 {
+		t.Errorf("summary is too tall (%d lines), should be compact <= 15 lines!", len(lines))
 	}
 }

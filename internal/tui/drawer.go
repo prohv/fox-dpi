@@ -22,12 +22,22 @@ func (m Model) renderSplitFlowView(maxRows int, totalWidth int) string {
 	var leftRows []string
 	leftRows = append(leftRows, header)
 
-	displayCount := maxRows - 1
-	if displayCount > len(m.cachedFlows) {
-		displayCount = len(m.cachedFlows)
+	visibleRows := maxRows - 1
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	m.adjustScroll(visibleRows)
+
+	start := m.scrollOffset
+	if start > len(m.cachedFlows) {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(m.cachedFlows) {
+		end = len(m.cachedFlows)
 	}
 
-	for i := 0; i < displayCount; i++ {
+	for i := start; i < end; i++ {
 		flow := m.cachedFlows[i]
 		isSelected := (i == m.selectedIdx)
 
@@ -59,7 +69,7 @@ func (m Model) renderSplitFlowView(maxRows int, totalWidth int) string {
 		leftRows = append(leftRows, line)
 	}
 
-	leftBox := StyleRoundedBox.Width(leftWidth).Height(maxRows).Render(strings.Join(leftRows, "\n"))
+	leftBox := NewBox().Width(leftWidth).Height(maxRows).Render(strings.Join(leftRows, "\n"))
 
 	// 2. Right detail card
 	var rightContent string
@@ -70,7 +80,7 @@ func (m Model) renderSplitFlowView(maxRows int, totalWidth int) string {
 		rightContent = StyleMuted.Render("No flow selected")
 	}
 
-	rightBox := StyleDrawer.Width(rightWidth).Height(maxRows).Render(rightContent)
+	rightBox := NewDrawerBox().Width(rightWidth).Height(maxRows).Render(rightContent)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 }
@@ -125,12 +135,22 @@ func (m Model) renderAlertsView(maxRows int) string {
 	if len(m.cachedAlerts) == 0 {
 		rows = append(rows, "", StyleAlertNormal.Render("  🛡 Clean Network Radar: Zero security anomalies or exfiltration detected."))
 	} else {
-		displayCount := maxRows - 1
-		if displayCount > len(m.cachedAlerts) {
-			displayCount = len(m.cachedAlerts)
+		visibleRows := maxRows - 1
+		if visibleRows < 1 {
+			visibleRows = 1
+		}
+		m.adjustScroll(visibleRows)
+
+		start := m.scrollOffset
+		if start > len(m.cachedAlerts) {
+			start = 0
+		}
+		end := start + visibleRows
+		if end > len(m.cachedAlerts) {
+			end = len(m.cachedAlerts)
 		}
 
-		for i := 0; i < displayCount; i++ {
+		for i := start; i < end; i++ {
 			alert := m.cachedAlerts[i]
 			timeStr := alert.Timestamp.Format("15:04:05")
 
@@ -155,5 +175,5 @@ func (m Model) renderAlertsView(maxRows int) string {
 		}
 	}
 
-	return StyleRoundedBox.Width(boxWidth).Height(maxRows).Render(strings.Join(rows, "\n"))
+	return NewBox().Width(boxWidth).Height(maxRows).Render(strings.Join(rows, "\n"))
 }

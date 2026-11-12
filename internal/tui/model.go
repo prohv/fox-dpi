@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 // Tab represents active view tab.
@@ -33,19 +35,21 @@ func tickCmd() tea.Cmd {
 
 // Model maintains the state of the interactive Fox DPI terminal.
 type Model struct {
-	bridge     *EventBridge
-	metricsFn  func() engine.Metrics
-	ifaceDesc  string
-	startTime  time.Time
+	bridge      *EventBridge
+	metricsFn   func() engine.Metrics
+	liveFlowsFn func(int) []sink.FlowEvent
+	ifaceDesc   string
+	startTime   time.Time
 
-	width      int
-	height     int
+	width  int
+	height int
 
 	activeTab  Tab
 	showDrawer bool
 	paused     bool
 
 	selectedIdx  int
+	scrollOffset int
 	spinnerIdx   int
 	tickCounter  int
 
@@ -55,14 +59,23 @@ type Model struct {
 }
 
 // NewModel creates an initialized Bubble Tea model.
-func NewModel(bridge *EventBridge, metricsFn func() engine.Metrics, ifaceDesc string) Model {
+func NewModel(bridge *EventBridge, metricsFn func() engine.Metrics, liveFlowsFn func(int) []sink.FlowEvent, ifaceDesc string) Model {
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w < 50 || h < 12 {
+		w = 120
+		h = 30
+	}
+
 	return Model{
-		bridge:      bridge,
-		metricsFn:   metricsFn,
-		ifaceDesc:   ifaceDesc,
-		startTime:   time.Now(),
-		activeTab:   TabFlows,
-		cachedStats: bridge.BridgeSnapshot(0, 0, 0),
+		bridge:       bridge,
+		metricsFn:    metricsFn,
+		liveFlowsFn:  liveFlowsFn,
+		ifaceDesc:    ifaceDesc,
+		startTime:    time.Now(),
+		activeTab:    TabFlows,
+		width:        w,
+		height:       h,
+		cachedStats:  bridge.BridgeSnapshot(0, 0, 0),
 	}
 }
 
@@ -75,8 +88,10 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		if msg.Width > 0 && msg.Height > 0 {
+			m.width = msg.Width
+			m.height = msg.Height
+		}
 		return m, nil
 
 	case tickMsg:
@@ -98,12 +113,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if !m.paused {
-			m.cachedFlows = m.bridge.SnapshotFlows()
+			var live []sink.FlowEvent
+			if m.liveFlowsFn != nil {
+				live = m.liveFlowsFn(128)
+			}
+			evicted := m.bridge.SnapshotFlows()
+
+			// Merge active and closed flows (live first)
+			combined := make([]sink.FlowEvent, 0, len(live)+len(evicted))
+			combined = append(combined, live...)
+			// Append evicted if not exceeding 256
+			for _, ef := range evicted {
+				if len(combined) >= 256 {
+					break
+				}
+				combined = append(combined, ef)
+			}
+
+			m.cachedFlows = combined
 			m.cachedAlerts = m.bridge.SnapshotAlerts()
 			m.cachedStats = m.bridge.BridgeSnapshot(totalPkts, totalBytes, activeFlows)
 		}
 
 		return m, tickCmd()
+
+	case tea.MouseMsg:
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.moveSelection(-2)
+		case tea.MouseWheelDown:
+			m.moveSelection(2)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -112,14 +153,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % 3
+			m.selectedIdx = 0
+			m.scrollOffset = 0
 			return m, nil
 
 		case "1":
 			m.activeTab = TabFlows
+			m.selectedIdx = 0
+			m.scrollOffset = 0
 			return m, nil
 
 		case "2":
 			m.activeTab = TabAlerts
+			m.selectedIdx = 0
+			m.scrollOffset = 0
 			return m, nil
 
 		case "3", "g":
@@ -128,6 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.activeTab = TabGraphs
 			}
+			m.selectedIdx = 0
+			m.scrollOffset = 0
 			return m, nil
 
 		case " ":
@@ -147,26 +196,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "up", "k":
-			if m.selectedIdx > 0 {
-				m.selectedIdx--
-			}
+			m.moveSelection(-1)
 			return m, nil
 
 		case "down", "j":
-			maxItems := len(m.cachedFlows)
-			if m.activeTab == TabAlerts {
-				maxItems = len(m.cachedAlerts)
-			}
-			if m.selectedIdx < maxItems-1 {
-				m.selectedIdx++
+			m.moveSelection(1)
+			return m, nil
+
+		case "pgup", "ctrl+u":
+			m.moveSelection(-5)
+			return m, nil
+
+		case "pgdown", "ctrl+d":
+			m.moveSelection(5)
+			return m, nil
+
+		case "home":
+			m.selectedIdx = 0
+			m.scrollOffset = 0
+			return m, nil
+
+		case "end":
+			maxItems := m.itemCount()
+			if maxItems > 0 {
+				m.selectedIdx = maxItems - 1
 			}
 			return m, nil
 
 		case "c":
-			// Clear buffer
 			m.cachedFlows = nil
 			m.cachedAlerts = nil
 			m.selectedIdx = 0
+			m.scrollOffset = 0
 			return m, nil
 		}
 	}
@@ -174,41 +235,71 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) itemCount() int {
+	if m.activeTab == TabAlerts {
+		return len(m.cachedAlerts)
+	}
+	return len(m.cachedFlows)
+}
+
+func (m *Model) moveSelection(delta int) {
+	maxItems := m.itemCount()
+	if maxItems == 0 {
+		m.selectedIdx = 0
+		m.scrollOffset = 0
+		return
+	}
+
+	m.selectedIdx += delta
+	if m.selectedIdx < 0 {
+		m.selectedIdx = 0
+	}
+	if m.selectedIdx >= maxItems {
+		m.selectedIdx = maxItems - 1
+	}
+}
+
 // View renders the entire screen.
 func (m Model) View() string {
-	if m.width < 50 || m.height < 12 {
+	if m.width < 40 || m.height < 10 {
 		return "Terminal window too small for Fox DPI. Please enlarge."
 	}
 
-	// 1. Header
+	// 1. Header (4 lines total with borders)
 	header := m.renderHeader()
 
-	// 2. Navigation Pills
+	// 2. Navigation Pills (1 line)
 	nav := m.renderNav()
 
-	// 3. Main Body Viewport
-	bodyHeight := m.height - 10
-	if bodyHeight < 4 {
-		bodyHeight = 4
+	// 3. Body Viewport
+	// Exact height budgeting: m.height - 4(header) - 1(nav) - 3(footer) - 2(body border) - 1(margin) = m.height - 11
+	bodyContentHeight := m.height - 11
+	if bodyContentHeight < 3 {
+		bodyContentHeight = 3
 	}
 
 	var body string
 	switch m.activeTab {
 	case TabAlerts:
-		body = m.renderAlertsView(bodyHeight)
+		body = m.renderAlertsView(bodyContentHeight)
 	case TabGraphs:
-		body = m.renderGraphsView(bodyHeight)
+		body = m.renderGraphsView(bodyContentHeight)
 	default:
-		body = m.renderFlowsView(bodyHeight)
+		body = m.renderFlowsView(bodyContentHeight)
 	}
 
-	// 4. Footer
+	// 4. Footer (3 lines total with borders)
 	footer := m.renderFooter()
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, nav, body, footer)
 }
 
 func (m Model) renderHeader() string {
+	boxWidth := m.width - 2
+	if boxWidth < 40 {
+		boxWidth = 40
+	}
+
 	brand := StyleBrand.Render("🦊 FOX DPI")
 
 	var status string
@@ -235,12 +326,13 @@ func (m Model) renderHeader() string {
 	}
 
 	topRow := fmt.Sprintf("%s  %s    %s │ %s │ %s", brand, status, rateStr, flowsStr, alertBadge)
+	topRow = truncate(topRow, boxWidth-4)
 
 	bytesStr := formatBytes(m.cachedStats.TotalBytes)
-	subRow := StyleMuted.Render(fmt.Sprintf("Capture: %s  •  Volume: %s", truncate(m.ifaceDesc, m.width-35), bytesStr))
+	subRow := StyleMuted.Render(fmt.Sprintf("Capture: %s  •  Volume: %s", truncate(m.ifaceDesc, boxWidth-30), bytesStr))
+	subRow = truncate(subRow, boxWidth-4)
 
-	boxWidth := m.width - 2
-	return StyleRoundedBox.Width(boxWidth).Render(topRow + "\n" + subRow)
+	return NewBox().Width(boxWidth).Render(topRow + "\n" + subRow)
 }
 
 func (m Model) renderNav() string {
@@ -264,32 +356,54 @@ func (m Model) renderNav() string {
 	return fmt.Sprintf(" %s %s %s", tab1, tab2, tab3)
 }
 
+func (m *Model) adjustScroll(visibleRows int) {
+	if visibleRows <= 0 {
+		return
+	}
+	if m.selectedIdx < m.scrollOffset {
+		m.scrollOffset = m.selectedIdx
+	}
+	if m.selectedIdx >= m.scrollOffset+visibleRows {
+		m.scrollOffset = m.selectedIdx - visibleRows + 1
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+}
+
 func (m Model) renderFlowsView(maxRows int) string {
 	boxWidth := m.width - 2
+	if boxWidth < 40 {
+		boxWidth = 40
+	}
 
 	if m.showDrawer && len(m.cachedFlows) > 0 {
 		return m.renderSplitFlowView(maxRows, boxWidth)
 	}
 
-	// Full table
+	visibleRows := maxRows - 1
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	m.adjustScroll(visibleRows)
+
 	headers := m.formatFlowHeader(boxWidth)
 	var rows []string
 	rows = append(rows, headers)
 
 	if len(m.cachedFlows) == 0 {
-		rows = append(rows, StyleMuted.Render("  Waiting for network packets..."))
+		rows = append(rows, StyleMuted.Render("  Waiting for network packets on adapter..."))
 	} else {
-		// Clamp selection
-		if m.selectedIdx >= len(m.cachedFlows) {
-			m.selectedIdx = len(m.cachedFlows) - 1
+		start := m.scrollOffset
+		if start > len(m.cachedFlows) {
+			start = 0
+		}
+		end := start + visibleRows
+		if end > len(m.cachedFlows) {
+			end = len(m.cachedFlows)
 		}
 
-		displayCount := maxRows - 1
-		if displayCount > len(m.cachedFlows) {
-			displayCount = len(m.cachedFlows)
-		}
-
-		for i := 0; i < displayCount; i++ {
+		for i := start; i < end; i++ {
 			flow := m.cachedFlows[i]
 			isSelected := (i == m.selectedIdx)
 			row := m.formatFlowRow(flow, isSelected, boxWidth)
@@ -298,15 +412,13 @@ func (m Model) renderFlowsView(maxRows int) string {
 	}
 
 	content := strings.Join(rows, "\n")
-	return StyleRoundedBox.Width(boxWidth).Height(maxRows).Render(content)
+	return NewBox().Width(boxWidth).Height(maxRows).Render(content)
 }
 
 func (m Model) formatFlowHeader(width int) string {
 	if width < 90 {
-		// Compact columns
 		return StyleTableHeader.Render(fmt.Sprintf(" %-8s %-5s %-20s %-24s %-8s", "TIME", "L7", "DESTINATION", "HOST / SNI", "BYTES"))
 	}
-	// Full width
 	return StyleTableHeader.Render(fmt.Sprintf(" %-8s %-4s %-5s %-21s %-21s %-22s %-6s %-7s",
 		"TIME", "L4", "L7", "SOURCE", "DESTINATION", "HOST / SNI", "RTT", "BYTES"))
 }
@@ -360,24 +472,39 @@ func (m Model) formatFlowRow(f sink.FlowEvent, isSelected bool, width int) strin
 
 func (m Model) renderFooter() string {
 	boxWidth := m.width - 2
+	if boxWidth < 40 {
+		boxWidth = 40
+	}
 	elapsed := time.Since(m.startTime).Round(time.Second)
 
-	left := fmt.Sprintf(" %s Switch  %s Inspect  %s Pause  %s Graphs  %s Clear  %s Quit",
-		StyleKeyHint.Render("[Tab]"),
-		StyleKeyHint.Render("[Enter]"),
-		StyleKeyHint.Render("[Space]"),
-		StyleKeyHint.Render("[g]"),
-		StyleKeyHint.Render("[c]"),
-		StyleKeyHint.Render("[q]"),
-	)
+	var left string
+	if boxWidth < 85 {
+		left = fmt.Sprintf(" %s Tab  %s Enter  %s Space  %s Quit",
+			StyleKeyHint.Render("[1-3]"),
+			StyleKeyHint.Render("[i]"),
+			StyleKeyHint.Render("[p]"),
+			StyleKeyHint.Render("[q]"),
+		)
+	} else {
+		left = fmt.Sprintf(" %s Switch  %s Inspect  %s Pause  %s Graphs  %s Clear  %s Quit",
+			StyleKeyHint.Render("[Tab]"),
+			StyleKeyHint.Render("[Enter]"),
+			StyleKeyHint.Render("[Space]"),
+			StyleKeyHint.Render("[g]"),
+			StyleKeyHint.Render("[c]"),
+			StyleKeyHint.Render("[q]"),
+		)
+	}
 
 	right := StyleMuted.Render(fmt.Sprintf("%s ", elapsed))
 	space := boxWidth - lipgloss.Width(left) - lipgloss.Width(right)
 	if space < 1 {
+		left = truncate(left, boxWidth-lipgloss.Width(right)-2)
 		space = 1
 	}
 
-	return StyleRoundedBox.Width(boxWidth).Render(left + strings.Repeat(" ", space) + right)
+	line := left + strings.Repeat(" ", space) + right
+	return NewBox().Width(boxWidth).Render(truncate(line, boxWidth-2))
 }
 
 func truncate(s string, maxLen int) string {
