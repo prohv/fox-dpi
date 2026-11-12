@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-11-12
+
+### Added
+- **Interactive Terminal TUI (Bubble Tea & Lip Gloss)**:
+  - Live animated terminal HUD with pastel pop theme (`#FF8C42` Fox Orange brand, Cyan TLS, Peach HTTP, Lavender DNS, Mint Green metrics, and Rose threats).
+  - Split flow inspector drawer (60/40 horizontal split on `[Enter]`) showing TLS SNI, TCP 3WHS latency, and L7 metadata.
+  - Threat radar view (`Tab 2` / `[2]`) with filtered real-time MITRE security detections.
+  - Traffic analytics view (`Tab 3` / `[3]` / `g`) with 30s rolling throughput sparkline and protocol distribution bars.
+  - Smooth viewport scrolling with keyboard (`↑`/`↓`, `k`/`j`, `PgUp`/`PgDn`, `Home`/`End`) and mouse wheel.
+  - Non-blocking ring buffer event bridge decoupling 30 FPS UI redraws from the engine's zero-alloc packet ingestion.
+  - Headless fallback: `-headless` flag and automatic TTY detection for clean headless execution in CI/CD and scripts.
+- **Modern Compact Run Summary**:
+  - Replaced legacy raw ASCII tables with a compact, rounded pastel-pop summary card that tightly hugs session telemetry with zero empty space.
+- **Engine Live Telemetry Snapshot**:
+  - Added real-time active flow polling (`engine.ActiveFlows`) directly from flow table shards for instantaneous packet visualization.
+
 ## [0.1.3] - 2026-11-11
 
 ### Fixed

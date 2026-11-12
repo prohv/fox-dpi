@@ -3,7 +3,7 @@
 > High-Performance Passive Layer 7 Deep Packet Inspection Engine in Go.
 
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat&logo=go)](https://golang.org)
-[![Release](https://img.shields.io/badge/release-v0.1.3-blue.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.1.4-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero-Alloc](https://img.shields.io/badge/Hot_Path-Zero--Alloc-brightgreen.svg)]()
 [![Race-Free](https://img.shields.io/badge/Concurrency-100%25_Race--Free-success.svg)]()

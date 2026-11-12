@@ -22,7 +22,7 @@ import (
 )
 
 // Version is the current release of Fox DPI.
-const Version = "v0.1.3"
+const Version = "v0.1.4"
 
 func main() {
 	pcapFile := flag.String("f", "", "Path to PCAP file for offline analysis")

@@ -90,7 +90,7 @@ func Test_CLI_Version_E2E(t *testing.T) {
 		t.Fatalf("CLI -version failed: %v, output: %s", err, string(out))
 	}
 	outputStr := string(out)
-	if !strings.Contains(outputStr, "foxdpi v0.1.3") {
-		t.Errorf("expected version output 'foxdpi v0.1.3', got: %s", outputStr)
+	if !strings.Contains(outputStr, "foxdpi v0.1.4") {
+		t.Errorf("expected version output 'foxdpi v0.1.4', got: %s", outputStr)
 	}
 }
